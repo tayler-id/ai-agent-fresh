@@ -1,0 +1,7 @@
+$03764097-6379-4072-9a22-75bac0277d5f²¢:vector ÿÿÿÿÿÿÿÿÿ*fixed_size_list:float:15368Zdefault,
+text_chunk ÿÿÿÿÿÿÿÿÿ*string8Zdefault+	source_id ÿÿÿÿÿÿÿÿÿ*string8Zdefault.content_type ÿÿÿÿÿÿÿÿÿ*string8Zdefault,chunk_index ÿÿÿÿÿÿÿÿÿ*int328Zdefault+
+line_start ÿÿÿÿÿÿÿÿÿ*int328Zdefault)line_end ÿÿÿÿÿÿÿÿÿ*int328Zdefault+	timestamp ÿÿÿÿÿÿÿÿÿ*string8Zdefault,
+project_id ÿÿÿÿÿÿÿÿÿ*string8Zdefault,
+session_id	 ÿÿÿÿÿÿÿÿÿ*string8Zdefault"!
+lance.auto_cleanup.interval20"'
+lance.auto_cleanup.older_than14days

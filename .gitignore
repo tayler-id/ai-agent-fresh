@@ -1,0 +1,44 @@
+# Node.js
+node_modules/
+npm-debug.log*
+.env
+.DS_Store
+*.log
+dist/
+.cache/
+coverage/
+.vscode/
+.idea/
+*.local
+*.env
+*.secret
+prompts.md
+config.json
+
+# Generated output
+output/
+
+# Temporary files
+temp-clones/
+
+# LanceDB data
+vector-memory/lancedb-data/
+
+# User-specific runtime data (if not intended for version control)
+# If these directories/files should be versioned (e.g., as templates or defaults), remove them from here.
+developer-profiles/
+memory-hierarchy/
+memory-store.json
+
+# Backup files
+memory-bank/* 2.md
+
+# OS-specific or problematic top-level entries (ensure this is intended)
+# If D:/ is a mount point for project-relevant external data that *should* be versioned,
+# this line should be removed or made more specific.
+# Generally, ignoring entire drives is unusual.
+D:/
+
+# Memory UI specific ignores (if applicable)
+src/memory-ui/node_modules/
+src/memory-ui/build/

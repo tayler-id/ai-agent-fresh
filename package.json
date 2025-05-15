@@ -1,0 +1,22 @@
+{
+  "type": "module",
+  "name": "ai-agent",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@ai-sdk/openai": "^1.3.22",
+    "@lancedb/lancedb": "^0.19.0",
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "dotenv": "^16.5.0",
+    "glob": "^11.0.2",
+    "node-fetch": "^2.7.0",
+    "youtube-transcript-plus": "^1.0.4"
+  }
+}

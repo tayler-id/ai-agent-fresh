@@ -1,0 +1,13 @@
+{
+  "backend": "chroma", 
+  "embeddingProvider": "openai", 
+  "openaiApiKey": "YOUR_OPENAI_API_KEY",
+  "chroma": {
+    "host": "localhost",
+    "port": 8000,
+    "collection": "ai-agent-memory"
+  },
+  "huggingface": {
+    "model": "sentence-transformers/all-MiniLM-L6-v2"
+  }
+}

@@ -1,0 +1,9 @@
+# Prioritize these specific files for ai-agent analysis
+src/llm.js
+src/agent.js
+src/github.js
+src/promptGenerator.js
+memory-bank/projectbrief.md
+memory-bank/activeContext.md
+README.md
+package.json

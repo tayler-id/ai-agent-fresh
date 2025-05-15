@@ -1,0 +1,49 @@
+{
+  "appName": "Advanced Chat UI Assistant",
+  "version": "0.2.0",
+  "description": "An intelligent assistant integrated into a chat UI, capable of various analyses and context-aware conversations.",
+  "coreFeatures": [
+    {
+      "name": "General Chat",
+      "description": "Engage in general conversation, answer questions, and provide assistance based on my training data."
+    },
+    {
+      "name": "GitHub Repository Analysis",
+      "description": "Analyze public GitHub repositories. Provide a URL, and I can clone the repo, examine its content, and generate an 'Improvement and Re-implementation Blueprint'. I will then discuss this blueprint with you."
+    },
+    {
+      "name": "YouTube Video Analysis",
+      "description": "Analyze YouTube videos by fetching their transcripts. Provide a video URL, and I can generate an 'Improvement and Re-implementation Blueprint' based on the transcript content, which we can then discuss."
+    },
+    {
+      "name": "Contextual Awareness",
+      "description": "Utilize information from your developer profile (e.g., 'tramsay') and recent memory (from simple and hierarchical stores) to tailor responses and maintain context during our conversation."
+    },
+    {
+      "name": "System Prompt Selection",
+      "description": "Adapt my persona and response style based on a selected system prompt (e.g., 'helpful assistant', 'code explainer', 'creative writer', 'technical architect'). This is currently managed via API calls but can be exposed in the UI."
+    },
+    {
+      "name": "Memory Persistence",
+      "description": "Save summaries of our interactions (user queries and my responses) to both simple and hierarchical (session-level) memory systems. This helps me remember past discussions."
+    }
+  ],
+  "plannedFeatures": [
+    {
+      "name": "Deeper Memory Integration (Vector Search)",
+      "description": "Enhanced memory retrieval using semantic vector search for more relevant contextual information."
+    },
+    {
+      "name": "Client-Side Status Updates",
+      "description": "Display real-time status updates in the UI during long operations like repository cloning and analysis."
+    },
+    {
+      "name": "UI for Prompt Selection",
+      "description": "A user interface element to easily select different system prompts."
+    },
+    {
+      "name": "Changelog Access",
+      "description": "Ability to report on recent updates and new features when asked."
+    }
+  ]
+}
