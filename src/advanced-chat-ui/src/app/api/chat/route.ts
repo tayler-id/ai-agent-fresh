@@ -84,9 +84,9 @@ export async function POST(req: Request) {
         try {
           await lvm.init();
           lvmInitialized = true;
-          console.log('[LVM Route] LanceDB Vector Memory initialized successfully.');
+          console.log('[ChatAPI LVM] LanceDB Vector Memory initialized successfully.');
         } catch (lvmInitError) {
-          console.error('[LVM Route] LanceDB Vector Memory initialization failed:', lvmInitError);
+          console.error('[ChatAPI LVM] LanceDB Vector Memory initialization failed:', lvmInitError);
           // lvmInitialized remains false, search will be skipped
         }
       }
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
       // Perform Semantic Search with LanceDB if initialized and user message exists
       if (lvmInitialized && lastUserMessage && lastUserMessage.content) {
         try {
-          console.log(`[LVM Route] Performing semantic search for query: "${lastUserMessage.content.substring(0, 50)}..."`);
+          console.log('[ChatAPI LVM] Performing semantic search.');
           const semanticSearchResults = await lvm.search(lastUserMessage.content, 3); // Get top 3 results
           contextMetadata.vectorSearchResults = semanticSearchResults.length;
           if (semanticSearchResults && semanticSearchResults.length > 0) {
@@ -125,12 +125,12 @@ export async function POST(req: Request) {
               semanticContext += `- ${item.text_chunk} (Similarity: ${item.score ? item.score.toFixed(4) : 'N/A'})\n`;
             });
             dynamicContext += semanticContext;
-            console.log(`[LVM Route] Added ${semanticSearchResults.length} semantic search results to context.`);
+            console.log(`[ChatAPI LVM] Added ${semanticSearchResults.length} semantic search results to context.`);
           } else {
-            console.log('[LVM Route] No relevant semantic search results found.');
+            console.log('[ChatAPI LVM] No relevant semantic search results found.');
           }
         } catch (searchError) {
-          console.error('[LVM Route] Semantic search failed:', searchError);
+          console.error('[ChatAPI LVM] Semantic search failed:', searchError);
           // Optionally append error to streamDataForResponse or dynamicContext
           dynamicContext += "\n\n[Note: Semantic search encountered an error.]";
           contextMetadata.vectorSearchResults = -1; // Indicate error
@@ -250,9 +250,9 @@ export async function POST(req: Request) {
               // project_id and session_id will use defaults from LanceVectorMemory if not provided
             };
             await lvm.addEntry(interactionKey, textToEmbed, vectorMetadata);
-            console.log(`[LanceDB Save] Interaction embedded and saved for key: ${interactionKey}`);
+            console.log(`[ChatAPI LVM] Interaction embedded and saved for key: ${interactionKey}`);
           } catch (lvmSaveError) {
-            console.error('[LanceDB Save Error]', lvmSaveError);
+            console.error('[ChatAPI LVM] Save Error]', lvmSaveError);
           }
         }
 

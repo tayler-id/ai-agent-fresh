@@ -38,10 +38,13 @@ graph TD
         SimpleMem[src/memory.js: memory-store.json]
         HierarchicalMem[src/hierarchicalMemory.js: session/project/global JSONs]
         subgraph SemanticVectorMemory
-            LanceVecMem[vector-memory/lanceVectorMemory.js]
-            LanceDB[src/lancedb.js: LanceDB Interface]
-            EmbeddingMod[vector-memory/embeddingProvider.js: OpenAI Embeddings]
+            LanceVecMem[vector-memory/lanceVectorMemory.js (Main Agent)]
+            LanceDB[src/lancedb.js: LanceDB Interface (Main Agent)]
+            EmbeddingMod[vector-memory/embeddingProvider.js (Main Agent)]
         end
+        LanceVecMem_ChatUI[advanced-chat-ui/src/lib/lanceVectorMemory.js (Chat UI Copy)]
+        LanceDB_ChatUI[advanced-chat-ui/src/lib/lancedb.js (Chat UI Copy)]
+        EmbeddingMod_ChatUI[advanced-chat-ui/src/lib/embeddingProvider.js (Chat UI Copy)]
     end
     
     subgraph ExternalServices
@@ -98,6 +101,11 @@ graph TD
     NextJS_Chat_API -- Uses --> GitHubMod_LocalCopy[advanced-chat-ui/src/lib/github.js]; % Local copy
     GitHubMod_LocalCopy -- Uses --> GlobLib[glob in advanced-chat-ui];
     NextJS_Chat_API -- InteractsWith --> DeepSeek; % Directly or via LLMMod
+    NextJS_Chat_API -- Uses --> LanceVecMem_ChatUI;
+    LanceVecMem_ChatUI -- Uses --> LanceDB_ChatUI;
+    LanceVecMem_ChatUI -- Uses --> EmbeddingMod_ChatUI;
+    EmbeddingMod_ChatUI -- InteractsWith --> OpenAI_Embed;
+
 ```
 
 ## Key System Components and Patterns
@@ -152,12 +160,20 @@ graph TD
         *   Handles POST requests from the `useChat` hook.
         *   Connects to LLMs (currently DeepSeek via `@ai-sdk/openai` provider) using API keys from its own `.env.local` (e.g., `DEEPSEEK_API_KEY`).
         *   Uses `streamText` from the `ai` package to stream responses.
-        *   Includes basic URL detection (GitHub, YouTube).
-        *   Uses a local copy of `github.js` (from `src/advanced-chat-ui/src/lib/github.js`) for functions like `parseGitHubUrl`. This copy requires `glob` to be a dependency of `advanced-chat-ui`.
+        *   Includes basic URL detection (GitHub, YouTube) and can trigger analysis for these URLs.
+        *   **RAG Implementation (May 16, 2025):** Performs semantic search using its local `LanceVectorMemory` instance (`advanced-chat-ui/src/lib/lanceVectorMemory.js`) based on the user's message. The search results are used to augment the LLM's system prompt, enabling Retrieval Augmented Generation. Chat interactions are also saved back to its local LanceDB instance.
+        *   Uses local copies of `github.js`, `llm.js`, memory modules, etc., from `src/advanced-chat-ui/src/lib/`.
     *   **Configuration:**
-        *   `next.config.ts`: Configured with `experimental: { externalDir: true }` (though current solution uses local copy of `github.js`).
-        *   `tsconfig.json`: Includes path alias `@/*` for its own `src` and `@agentLib/*` (currently unused due to local copy strategy for `github.js`).
-    *   **Current Functionality:** Basic chat with LLM, acknowledgment of detected GitHub/YouTube URLs by modifying the system prompt to the LLM. Full analysis capabilities for URLs are not yet integrated.
+        *   `next.config.ts`: Configured with `serverExternalPackages: ['@lancedb/lancedb']` to support LanceDB.
+        *   `tsconfig.json`: Includes path alias `@/*` for its own `src`.
+    *   **Current Functionality:** Chat with LLM, RAG using semantic search on past chat interactions, acknowledgment/analysis of detected GitHub/YouTube URLs.
+
+8.  **Memory-Informed Planning and `query_memory` Meta-Tool (CLI Agent):**
+    *   **Concept:** To enhance the LLM's planning and tool chaining capabilities, a mechanism is designed where the LLM can proactively query internal memory systems (semantic and hierarchical) before finalizing its plan or selecting tools.
+    *   **`query_memory` Meta-Tool:** The LLM uses a special `query_memory` instruction (with parameters like `query_type`, `query_string`) to request information from memory.
+    *   **Agent Orchestration:** The agent's core logic (`src/agent.js`) intercepts `query_memory` requests. It then calls the appropriate memory modules (`LanceVectorMemory`, `HierarchicalMemory`) to retrieve the data.
+    *   **Iterative Refinement:** The retrieved memory information is formatted as a "tool result" and fed back into the LLM's context. The LLM can then refine its plan or make further memory queries before deciding on external actions (e.g., `read_file`, `execute_command`). This creates an internal sub-loop for memory-informed decision-making within a single user turn.
+    *   **Goal:** To make the agent's planning more context-aware, efficient, and capable of avoiding past pitfalls or leveraging known project patterns.
 
 ## Design Patterns & Principles
 -   **Modular Design:** Functionality is well-separated into distinct ES modules.

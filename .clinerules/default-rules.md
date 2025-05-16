@@ -14,16 +14,18 @@
 - **Task Manager Workflow:**
     -   MUST be used for every new multi-step task to plan and track progress (`github.com/pashpashpash/mcp-taskmanager`).
     -   Strictly follow the `mark_task_done` -> `user_approval` -> `get_next_task` cycle for each task defined in the `request_planning` stage.
+    -   For initial information gathering involving reading a known set of multiple files (e.g., reading all core Memory Bank files at the start of a task), consider if a single planned task in Task Manager like "Read all [XYZ] files" is appropriate, followed by separate tasks for analysis or processing of those files. This can reduce approval steps for sequential, non-destructive read operations.
     -   **Exception for Chained Sub-Operations:** If a single *planned task* from the Task Manager inherently involves a tight sequence of multiple, low-risk, internal sub-operations that *Cline* executes (e.g., a sequence of `git add` then `git commit` performed via `execute_command` as part of a larger "commit feature X" task), Cline MAY perform these chained sub-operations and then mark the single parent task as done, seeking approval once for that parent task. This is to avoid excessive approval steps for trivial, tightly coupled internal actions. Cline MUST still clearly state all sub-operations performed when marking the parent task done. This exception does NOT apply if any sub-operation involves writing/replacing files or has a higher risk.
     -   **Tasks Requiring Elevated Permissions:** If a planned task is likely to require elevated permissions (e.g., `sudo`), Cline SHOULD:
         -   Inform the user of this possibility *before* attempting the command.
         -   Ask if the user has the necessary permissions or if an alternative approach should be considered.
         -   If permissions are lacking and no alternative is immediately viable, mark the task as "blocked" or "skipped due to permissions" and consult the user on how to proceed with the overall goal.
 - **Sequential Thinking:** SHOULD be used for complex problem-solving or when a detailed thought process needs to be recorded (`github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking`).
-- **Knowledge Graph (Memory MCP):** SHOULD be used to store and retrieve structured knowledge about the project, entities, and relationships (`github.com/modelcontextprotocol/servers/tree/main/src/memory`).
+- **Knowledge Graph (Memory MCP):** SHOULD be used to store and retrieve structured knowledge about the project, entities, and relationships (`github.com/modelcontextprotocol/servers/tree/main/src/memory`). Consider updating the KG after significant changes to project structure, status, core components, or key decisions are documented in the Memory Bank.
 - **Context7:** SHOULD be used for fetching up-to-date library documentation (`github.com/upstash/context7-mcp`). Resolve library ID first.
 - **Exa Search:** SHOULD be used for initial research or to back up decision-making before generating task lists for the Task Manager (`github.com/exa-labs/exa-mcp-server`).
-- **File System Tools:** ALWAYS use Cline's built-in file system tools (`read_file`, `write_to_file`, `replace_in_file`, `list_files`) for interacting with files, rather than shell commands like `cat` or `ls` unless absolutely necessary for a specific unsupported operation.
+- **File System Tools:** ALWAYS use Cline's built-in file system tools (`read_file`, `write_to_file`, `replace_in_file`, `list_files`) for interacting with files, rather than shell commands like `cat` or `ls`.
+- For operations not directly supported by these tools, such as creating empty directories or moving/renaming files, using `execute_command` with appropriate shell commands (e.g., `mkdir`, `mv`, `cp`) is acceptable and necessary.
 
 ### Proactive Git Push Conflict Handling Strategy
 - Before attempting a `git push` (especially to `main` or other protected branches), if there's a possibility of the local branch being behind or diverged (e.g., after a period of local work, or if `git status` shows `origin/main` has moved), Cline SHOULD:
@@ -48,8 +50,8 @@
 -   While preferred MCP tools should be attempted first, if an MCP tool fails consistently (e.g., 2 consecutive attempts with generic errors) for a common operation (like `git status`, `git add`), Cline SHOULD:
     1.  Note the MCP tool failure.
     2.  Attempt a direct, equivalent `execute_command` if available and safe (e.g., `git status`, `git add`, `git commit`).
-    3.  If `execute_command` is not suitable or also fails, then use `ask_followup_question` to request the user to perform the action or provide information.
-    4.  After the task, consider noting the unreliable MCP server in `activeContext.md` if it impacts workflow significantly.
+        3.  If `execute_command` is not suitable or also fails, then use `ask_followup_question` to request the user to perform the action or provide information.
+        4.  If a specific MCP server proves consistently unreliable across multiple tasks, consider documenting this observation in `memory-bank/techContext.md` to inform future decisions about relying on that MCP server. Note any immediate workflow impact in `activeContext.md`.
 -   **Workflow-Critical MCP Failure (e.g., Task Manager):** If an MCP server essential for a core workflow (like Task Manager for multi-step tasks) becomes unavailable:
     1.  Clearly inform the user of the MCP failure and its impact on the standard workflow.
     2.  If possible, identify the remaining planned steps from the last known state of the MCP tool.
@@ -67,6 +69,21 @@
     1. First, check `environment_details.Actively Running Terminals` for any *new* output since the last interaction, especially if an `execute_command` was recently run by me or if the user implies they've just performed an action.
     2. If new, relevant output is found there, process it.
     3. If no new relevant output is found in `environment_details`, or if clarity is needed, use `ask_followup_question` to explicitly request the user to provide the specific new terminal output they are referring to.
+
+### File Editing Best Practices
+- When using `replace_in_file` for changes spanning multiple lines or involving complex indentation/whitespace:
+    a. Prefer multiple, smaller, highly targeted `replace_in_file` calls over a single large one if the larger one fails.
+    b. Pay extremely close attention to exact line endings, leading/trailing whitespace, and indentation in SEARCH blocks, referencing the latest `final_file_content` precisely.
+    c. If a `replace_in_file` attempt fails, carefully analyze the error and the provided `file_content` to adjust the SEARCH block. Do not simply retry with the exact same failing parameters.
+    d. Adhere to the '3 failures then `write_to_file`' fallback for persistent `replace_in_file` issues on a given set of changes.
+
+### Troubleshooting External Configuration/Environment Issues
+- When core functionality fails due to suspected external factors (e.g., missing API keys, incorrect command execution path):
+    a. Clearly state the observed error and the suspected cause to the user.
+    b. Guide the user to verify their setup (e.g., `.env` file content and location, command execution path from the correct directory).
+    c. If simple verification fails, propose adding temporary, minimal debug logs to the relevant script (e.g., `console.log(process.env.MY_KEY)`) to pinpoint where the configuration is failing to load. I will make this change if requested.
+    d. Once debug logs are added, instruct the user on how to run the script to capture the debug output.
+    e. Ensure temporary debug logs are removed after the issue is resolved.
 
 ---
 

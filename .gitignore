@@ -23,6 +23,7 @@ temp-clones/
 
 # LanceDB data
 vector-memory/lancedb-data/
+src/advanced-chat-ui/vector-memory/lancedb-data/
 
 # User-specific runtime data (if not intended for version control)
 # If these directories/files should be versioned (e.g., as templates or defaults), remove them from here.

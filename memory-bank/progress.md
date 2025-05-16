@@ -60,7 +60,10 @@
     -   Initial URL detection (GitHub/YouTube) in API route, modifying system prompt for LLM acknowledgment.
     -   Resolved module import issues for `github.js` by copying it to `src/advanced-chat-ui/src/lib/github.js` and installing `glob` as a local dependency.
     -   NPM cache configuration issues diagnosed and resolved for the main project.
-    -   **LanceDB Integration (`task-95`):** Successfully tested with Webpack and Turbopack (May 14, 2025). The `serverExternalPackages: ['@lancedb/lancedb']` setting in `next.config.ts` was key. Webpack also required `webpack.externals`. The Turbopack `Error: could not resolve "@lancedb/lancedb-darwin-arm64"` did **not** reappear.
+    -   **LanceDB Integration & RAG (`task-95` related work - May 16, 2025):**
+        -   Successfully tested LanceDB with Webpack and Turbopack (May 14, 2025).
+        -   Core RAG mechanism (semantic search via LanceDB in `api/chat` route, results augmenting LLM context) implemented and manually tested (May 16, 2025).
+        -   Logging for LanceDB operations in `route.ts` refined for conciseness.
 -   **Memory-Enhanced Tool Chaining (req-34) - Core Mechanism Verified:**
     -   Implemented orchestration in `src/agent.js` (`handleLlmResponseAndMemoryQueries`) to detect and process `query_memory` tool calls from the LLM.
     -   Implemented `processInternalMemoryQuery` in `src/agent.js` for semantic and hierarchical lookups.
@@ -71,14 +74,14 @@
 
 1.  **Complete "Memory-Enhanced Tool Chaining" (req-34):**
     *   Commit and push all related code changes (`src/agent.js`, `src/llm.js`) and Memory Bank documentation updates (`task-156`).
-2.  **Advanced Chat UI - LanceDB Integration & Enhancements (High Priority):**
-    *   **Objective:** Fully integrate LanceDB semantic search into the `api/chat` route (`task-95`). Ensure search results are correctly processed and used to augment LLM context (RAG).
-    *   Refine the logging for LanceDB search results in `route.ts` to be more concise if needed.
-    *   Proceed with `task-95` and related UI feature development that depends on semantic search.
+2.  **Advanced Chat UI - LanceDB RAG & Enhancements (High Priority - Core RAG Implemented):**
+    *   **Status:** Core RAG functionality (semantic search via LanceDB in `api/chat` route, results augmenting LLM context) is implemented and tested. Logging has been refined.
+    *   **Next Steps for this feature:** Document changes (`task-161`), commit and push (`task-162`).
     *   Monitor for any side effects from the Turbopack warning regarding Webpack configuration. If issues arise, consult Turbopack documentation for specific configurations (`https://nextjs.org/docs/app/api-reference/next-config-js/turbo`).
+    *   Future enhancements could include more sophisticated context chunking, UI display of RAG sources, and dynamic `developerId` handling in the UI for personalized memory access.
 3.  **Research AI Agent Architectures & Native Dependency Solutions (Moderate Priority):**
     *   While the immediate blocker for LanceDB is resolved, this research (`task-98`, `task-99`, `task-100` of `req-23`) remains valuable for long-term best practices, handling other potential native dependencies, and understanding Turbopack-specific configurations beyond `serverExternalPackages`.
-4.  **Advanced Chat UI - Other Foundational Enhancements:**
+4.  **Advanced Chat UI - Other Foundational Enhancements (Post-RAG Commit):**
     *   Further integration of GitHub/YouTube analysis and other core agent features into the chat UI.
 5.  **Shared Code Management Strategy:**
     *   Evaluate and implement a robust strategy for sharing code between the main agent and the `advanced-chat-ui`. This remains relevant and may be informed by the research into architectural patterns.
@@ -99,9 +102,8 @@
 This list reflects features that are either not started, partially implemented without full integration, or need significant refinement.
 
 -   **Advanced Chat UI - Full Feature Set:**
-    *   **Semantic Search/Vector DB Integration (`task-95`):** Full RAG capabilities need to be built out beyond initial LanceDB integration.
-    *   Full analysis (cloning, blueprinting) for URLs is not yet integrated.
-    *   LangChain.js integration for RAG, tools, agents.
+    *   **Semantic Search/Vector DB Integration (`task-95` related):** Core RAG (semantic search augmenting LLM context in `api/chat`) is implemented.
+        *   *Still Left:* More advanced RAG features (e.g., sophisticated context chunking strategies, UI display/sourcing of retrieved context, dynamic `developerId` handling for personalized memory access in UI), full analysis (cloning, blueprinting) for URLs, LangChain.js integration.
     *   Dynamic UI elements and sophisticated animations.
     *   Display of complex analysis results (blueprints).
 -   **Memory Visualization UI (`src/memory-ui/`) - Full Functionality:** The UI backend is currently mocked. Full CRUD operations against persistent memory are NOT implemented for the UI.
@@ -120,4 +122,4 @@ This list reflects features that are either not started, partially implemented w
 ---
 
 **Summary (Updated May 16, 2025):**
-The AI Agent, in the `ai-agent-fresh` repository, has a solid foundation with diverse analysis capabilities and multiple memory systems. The "Memory-Enhanced Tool Chaining" feature's core mechanism (allowing the LLM to query internal memory via a `query_memory` tool) has been implemented and verified. The Advanced Chat UI has foundational elements and successful LanceDB integration testing. Immediate next steps involve committing the recent feature work, then resuming high-priority tasks like full LanceDB integration into the Chat UI for RAG capabilities. The Memory Bank documentation is being actively updated.
+The AI Agent, in the `ai-agent-fresh` repository, has a solid foundation with diverse analysis capabilities and multiple memory systems. The "Memory-Enhanced Tool Chaining" feature's core mechanism for the CLI agent is implemented and verified. The Advanced Chat UI now has a functional core RAG (Retrieval Augmented Generation) capability using LanceDB semantic search integrated into its `api/chat` route, with refined logging. Immediate next steps involve documenting and committing these Chat UI RAG updates, then proceeding with other roadmap items. The Memory Bank documentation is being actively updated.
