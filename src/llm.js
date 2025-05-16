@@ -36,7 +36,47 @@ Provided YouTube Transcript:
 ${transcript}
 """
 
-Respond ONLY with a valid JSON object with the following structure:
+Tool Usage (Optional):
+If, during your analysis and planning, you determine that you need specific information from the agent's internal memory to provide a better blueprint, you can request it using the 'query_memory' tool.
+To do this, include a 'tool_calls' array in your JSON response. Each object in this array should represent a tool call.
+
+For 'query_memory', the structure is:
+{
+  "tool_calls": [
+    {
+      "type": "function",
+      "function": {
+        "name": "query_memory",
+        "arguments": "{\"query_type\": \"semantic_search | hierarchical_lookup\", \"query_string\": \"your specific query here\"}"
+      }
+    }
+  ]
+}
+
+Parameters for 'query_memory':
+- "query_type": (string, required) Specify either "semantic_search" (for finding conceptually similar information) or "hierarchical_lookup" (for retrieving structured entries, e.g., by keywords or path-like queries).
+- "query_string": (string, required) The actual search query or lookup term.
+
+Example of using 'query_memory':
+If you are analyzing a YouTube video about a specific algorithm and want to see if the agent has stored previous analyses or implementations of similar algorithms, you might include:
+\"tool_calls\": [
+  {
+    \"type\": \"function\",
+    \"function\": {
+      \"name\": \"query_memory\",
+      \"arguments\": \"{\\\"query_type\\\": \\\"semantic_search\\\", \\\"query_string\\\": \\\"implementations of quicksort algorithm\\\"}\"
+    }
+  }
+]
+
+If you use this tool, the agent will execute the memory query and provide the results back to you. You should then use these results to refine your blueprint.
+If you do not need to query memory, omit the 'tool_calls' field or provide an empty array in your JSON response.
+Consider using this tool if:
+- You need to recall specific details about previously analyzed related projects/videos.
+- You want to check for existing solutions or patterns relevant to the current analysis.
+- You feel that accessing historical context would significantly improve the quality or relevance of your suggested enhancements.
+
+Respond ONLY with a valid JSON object with the following structure (and optionally include the 'tool_calls' field as described above if you need to query memory):
 {
   "originalProjectSummary": {
     "purpose": "Concise purpose of the project or concept explained in the video.",
@@ -315,7 +355,47 @@ Provided Repository Content:
 ${repoContentString}
 """
 
-Respond ONLY with a valid JSON object with the following structure:
+Tool Usage (Optional):
+If, during your analysis and planning, you determine that you need specific information from the agent's internal memory to provide a better blueprint, you can request it using the 'query_memory' tool.
+To do this, include a 'tool_calls' array in your JSON response. Each object in this array should represent a tool call.
+
+For 'query_memory', the structure is:
+{
+  "tool_calls": [
+    {
+      "type": "function",
+      "function": {
+        "name": "query_memory",
+        "arguments": "{\"query_type\": \"semantic_search | hierarchical_lookup\", \"query_string\": \"your specific query here\"}"
+      }
+    }
+  ]
+}
+
+Parameters for 'query_memory':
+- "query_type": (string, required) Specify either "semantic_search" (for finding conceptually similar information) or "hierarchical_lookup" (for retrieving structured entries, e.g., by keywords or path-like queries).
+- "query_string": (string, required) The actual search query or lookup term.
+
+Example of using 'query_memory':
+If you are analyzing a GitHub repository and want to know if similar architectural patterns have been discussed or stored previously, you might include:
+\"tool_calls\": [
+  {
+    \"type\": \"function\",
+    \"function\": {
+      \"name\": \"query_memory\",
+      \"arguments\": \"{\\\"query_type\\\": \\\"semantic_search\\\", \\\"query_string\\\": \\\"microservice architecture patterns for e-commerce\\\"}\"
+    }
+  }
+]
+
+If you use this tool, the agent will execute the memory query and provide the results back to you. You should then use these results to refine your blueprint.
+If you do not need to query memory, omit the 'tool_calls' field or provide an empty array in your JSON response.
+Consider using this tool if:
+- You need to recall specific details about previously analyzed related projects.
+- You want to check for existing solutions or patterns relevant to the current analysis.
+- You feel that accessing historical context would significantly improve the quality or relevance of your suggested enhancements.
+
+Respond ONLY with a valid JSON object with the following structure (and optionally include the 'tool_calls' field as described above if you need to query memory):
 {
   "originalProjectSummary": {
     "purpose": "Concise purpose of the original project based on the provided content.",

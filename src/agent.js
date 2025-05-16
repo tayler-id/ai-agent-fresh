@@ -13,6 +13,7 @@ import { loadMemory, addMemoryEntry, getRelevantMemory } from './memory.js';
 import { addMemoryEntry as addHierarchicalMemoryEntry, getMemoryEntries as getHierarchicalMemoryEntries } from './hierarchicalMemory.js';
 import { buildContextWindow } from './contextWindowManager.js';
 import { loadDeveloperProfile, updateDeveloperProfile, addCodingPattern } from './developerProfile.js';
+import LanceVectorMemory from '../vector-memory/lanceVectorMemory.js'; // Added for processInternalMemoryQuery
 
 const DEFAULT_CONFIG = {
   deepseekApiKey: "",
@@ -147,6 +148,126 @@ async function setupMemoryApi(app) {
 }
 
 export { setupMemoryApi };
+
+async function processInternalMemoryQuery(queryType, queryString, developerId) {
+  console.log(`[Agent] Processing internal memory query. Type: ${queryType}, Query: "${queryString}", DeveloperID: ${developerId}`);
+  try {
+    if (queryType === 'semantic_search') {
+      if (!config.openaiApiKey) {
+        return { status: "error", message: "OpenAI API Key is not configured. Cannot perform semantic search." };
+      }
+      const lanceMemory = new LanceVectorMemory({ openaiApiKey: config.openaiApiKey });
+      await lanceMemory.init();
+      // TODO: Consider if developerId or other context should be used as a filter for semantic search
+      // For now, searching globally. topK can be configurable.
+      const results = await lanceMemory.search(queryString, 3); 
+      return { status: "success", queryType, queryString, data: results };
+    } else if (queryType === 'hierarchical_lookup') {
+      const layersToSearch = ['session', 'project', 'global']; // Or make this configurable
+      let allEntries = [];
+      for (const layer of layersToSearch) {
+        const entries = await getHierarchicalMemoryEntries(layer); // Already imported
+        allEntries.push(...entries.map(e => ({ ...e, layer })));
+      }
+      
+      const lowerQueryString = queryString.toLowerCase();
+      const filteredEntries = allEntries.filter(entry => {
+        // Simple substring search in title, summary, or content if they exist
+        return (entry.title && entry.title.toLowerCase().includes(lowerQueryString)) ||
+               (entry.summary && entry.summary.toLowerCase().includes(lowerQueryString)) ||
+               (entry.content && typeof entry.content === 'string' && entry.content.toLowerCase().includes(lowerQueryString)) ||
+               (entry.key && entry.key.toLowerCase().includes(lowerQueryString)); // Search in key as well
+      });
+      // TODO: Potentially filter by developerId if hierarchical entries store such info
+      return { status: "success", queryType, queryString, data: filteredEntries.slice(0, 5) }; // Return top 5 matches
+    } else {
+      return { status: "error", message: `Unsupported memory query type: ${queryType}` };
+    }
+  } catch (error) {
+    console.error(`[Agent] Error in processInternalMemoryQuery: ${error.message}`, error);
+    return { status: "error", queryType, queryString, message: error.message, data: [] };
+  }
+}
+
+async function handleLlmResponseAndMemoryQueries(initialAnalysis, originalContent, llmConfigForRefinement, developerId, analysisFunctionName) {
+  let currentAnalysis = initialAnalysis;
+  let iteration = 0;
+  const MAX_MEMORY_QUERIES = 3; // To prevent infinite loops
+
+  // Check if currentAnalysis and currentAnalysis.tool_calls are defined
+  while (currentAnalysis && currentAnalysis.tool_calls && Array.isArray(currentAnalysis.tool_calls) && currentAnalysis.tool_calls.some(tc => tc.function && tc.function.name === 'query_memory') && iteration < MAX_MEMORY_QUERIES) {
+    const memoryQueryCall = currentAnalysis.tool_calls.find(tc => tc.function && tc.function.name === 'query_memory');
+    
+    // If no valid memoryQueryCall is found (e.g. function or name is missing), break the loop
+    if (!memoryQueryCall || !memoryQueryCall.function || !memoryQueryCall.function.arguments) {
+        console.log("[Agent] Invalid or no memory_query tool_call found in LLM response. Proceeding with current analysis.");
+        break;
+    }
+
+    console.log(`[Agent] LLM requested memory query: ${JSON.stringify(memoryQueryCall.function.arguments)}`);
+    iteration++;
+
+    let memoryQueryResult;
+    let queryArgs;
+    try {
+      // It's safer to parse arguments, as LLM might not always produce perfect JSON string for arguments
+      if (typeof memoryQueryCall.function.arguments === 'string') {
+        queryArgs = JSON.parse(memoryQueryCall.function.arguments);
+      } else {
+        queryArgs = memoryQueryCall.function.arguments; // Assume it's already an object
+      }
+      
+      if (!queryArgs || typeof queryArgs.query_type !== 'string' || typeof queryArgs.query_string !== 'string') {
+        throw new Error("Invalid arguments for query_memory: query_type and query_string are required.");
+      }
+      memoryQueryResult = await processInternalMemoryQuery(queryArgs.query_type, queryArgs.query_string, developerId);
+    } catch (e) {
+      console.error(`[Agent] Error processing memory query: ${e.message}`);
+      memoryQueryResult = { status: "error", message: `Error processing memory query: ${e.message}` };
+    }
+
+    console.log(`[Agent] Memory query result: ${JSON.stringify(memoryQueryResult).substring(0, 200)}...`);
+    
+    const combinedContentForRefinement = `
+      Original Content/Context:
+      ${originalContent}
+
+      Previous LLM Analysis (that triggered memory query):
+      ${JSON.stringify(currentAnalysis, null, 2)}
+      
+      Memory Query Result (for query: ${JSON.stringify(queryArgs)}):
+      ${JSON.stringify(memoryQueryResult, null, 2)}
+
+      Instructions: You previously decided to call the 'query_memory' tool. Above is the result of that query.
+      Please use this information to refine your analysis and provide an updated JSON blueprint.
+      If you need to query memory again, use the 'query_memory' tool in the 'tool_calls' section of your response.
+      Otherwise, provide your final, refined analysis without any 'tool_calls'.
+      Ensure your response is in the same JSON blueprint format as your initial analysis.
+    `;
+    
+    console.log("[Agent] Sending memory query result to LLM for refinement...");
+    // Determine which analysis function to call for refinement (analyzeRepoContent or analyzeTranscript)
+    if (analysisFunctionName === 'analyzeRepoContent') {
+        currentAnalysis = await analyzeRepoContent(combinedContentForRefinement, llmConfigForRefinement);
+    } else if (analysisFunctionName === 'analyzeTranscript') {
+        currentAnalysis = await analyzeTranscript(combinedContentForRefinement, llmConfigForRefinement);
+    } else {
+        console.error(`[Agent] Unknown analysis function name: ${analysisFunctionName}. Cannot refine.`);
+        break; // Break if we don't know how to refine
+    }
+
+    if (currentAnalysis && currentAnalysis.tool_calls && Array.isArray(currentAnalysis.tool_calls) && currentAnalysis.tool_calls.some(tc => tc.function && tc.function.name === 'query_memory')) {
+      console.log("[Agent] LLM wants to query memory again...");
+    } else {
+      console.log("[Agent] LLM provided refined analysis or no further memory queries needed.");
+      break; 
+    }
+  }
+  if (iteration >= MAX_MEMORY_QUERIES) {
+    console.warn("[Agent] Reached maximum memory query iterations.");
+  }
+  return currentAnalysis;
+}
 
 function sanitizeFilename(name) {
   return name.replace(/[^a-z0-9_.-]/gi, '_').toLowerCase();
@@ -313,7 +434,11 @@ async function main() {
               profileContext = 'Developer Preferences:\n' + JSON.stringify(developerProfile.preferences, null, 2) + '\n';
             }
             const contextWindow = buildContextWindow(localMemory, profileContext + localProjectContent, llmRepoConfig.maxTokens);
-            const analysis = await analyzeRepoContent(contextWindow, llmRepoConfig);
+            let analysis = await analyzeRepoContent(contextWindow, llmRepoConfig);
+
+            // Handle potential memory queries from the LLM
+            analysis = await handleLlmResponseAndMemoryQueries(analysis, localProjectContent, llmRepoConfig, developerId, 'analyzeRepoContent');
+            
             await addMemoryEntry('local', url, analysis.originalProjectSummary.purpose);
             await addHierarchicalMemoryEntry('project', { type: 'local', key: url, summary: analysis.originalProjectSummary.purpose });
 
@@ -388,7 +513,11 @@ async function main() {
               profileContextGh = 'Developer Preferences:\n' + JSON.stringify(developerProfile.preferences, null, 2) + '\n';
             }
             const contextWindow = buildContextWindow(repoMemory, profileContextGh + repoMainContent, llmRepoConfig.maxTokens);
-            const analysis = await analyzeRepoContent(contextWindow, llmRepoConfig);
+            let analysis = await analyzeRepoContent(contextWindow, llmRepoConfig);
+
+            // Handle potential memory queries from the LLM
+            analysis = await handleLlmResponseAndMemoryQueries(analysis, repoMainContent, llmRepoConfig, developerId, 'analyzeRepoContent');
+
             await addMemoryEntry('repo', url, analysis.originalProjectSummary.purpose);
             await addHierarchicalMemoryEntry('project', { type: 'repo', key: url, summary: analysis.originalProjectSummary.purpose });
 
@@ -442,7 +571,11 @@ async function main() {
           profileContextYt = 'Developer Preferences:\n' + JSON.stringify(developerProfile.preferences, null, 2) + '\n';
         }
         const contextWindow = buildContextWindow(ytMemory, profileContextYt + transcript, llmYouTubeConfig.maxTokens);
-        const analysis = await analyzeTranscript(contextWindow, llmYouTubeConfig);
+        let analysis = await analyzeTranscript(contextWindow, llmYouTubeConfig);
+
+        // Handle potential memory queries from the LLM
+        analysis = await handleLlmResponseAndMemoryQueries(analysis, transcript, llmYouTubeConfig, developerId, 'analyzeTranscript');
+
         await addMemoryEntry('youtube', url, analysis.originalProjectSummary.purpose);
         await addHierarchicalMemoryEntry('project', { type: 'youtube', key: url, summary: analysis.originalProjectSummary.purpose });
 
