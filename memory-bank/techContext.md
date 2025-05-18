@@ -1,98 +1,62 @@
 # Technical Context: AI Agent for Content Analysis & Personalized Assistance
 
 ## 1. Core Technologies & Environment
--   **Runtime Environment:** Node.js (version specified in `.nvmrc`, likely a recent LTS like 18.x or 20.x).
+-   **Runtime Environment:** Node.js v18.20.5 (confirmed from test outputs).
 -   **Programming Language:** JavaScript (ES Modules syntax: `import`/`export`).
 -   **Package Manager:** npm (manages dependencies via `package.json` and `package-lock.json`).
 -   **Operating System Context:** Developed and primarily tested on macOS, with user's default shell being zsh. PowerShell is also mentioned in relation to environment variable setup in `.clinerules`.
 
 ## 2. Key Node.js Core Modules Used
 -   **`readline`:** For CLI interactions in `src/agent.js`.
--   **`fs/promises`:** For asynchronous file system operations (directory creation, file read/write, delete) across various modules (`agent.js`, `github.js`, `memory.js`, `hierarchicalMemory.js`, `developerProfile.js`).
+-   **`fs/promises`:** For asynchronous file system operations.
 -   **`path`:** For platform-independent path manipulation.
--   **`child_process` (`exec` via `util.promisify`):** In `src/github.js` for executing `git clone` commands.
+-   **`child_process` (`exec` via `util.promisify`, `spawn`):** Used in `src/github.js` and potentially by `StdioClientTransport`.
 -   **`util` (`promisify`):** Used for converting callback-based functions to Promise-based.
--   **`url` (`fileURLToPath`):** Used in `src/agent.js` for module path resolution.
+-   **`url` (`fileURLToPath`):** Used for module path resolution.
+-   **`http`:** Used by `sse_echo_server.mjs`.
+-   **`crypto` (`randomUUID`):** Used by `sse_echo_server.mjs`.
 
-## 3. Key External Dependencies (Inferred from Imports & Functionality)
-    -   **`node-fetch`:** Used in `src/llm.js` and `vector-memory/embeddingProvider.js` for making HTTP requests to DeepSeek and OpenAI APIs.
-    -   **`youtube-transcript-plus`:** Used in `src/youtube.js` for fetching YouTube video transcripts.
-    -   **`@lancedb/lancedb`:** Used in `src/lancedb.js` for interacting with the LanceDB vector database.
-    -   **`apache-arrow`:** Used in `src/lancedb.js` for schema definitions with LanceDB.
-    -   **`glob`:** Used in `src/github.js` for file pattern matching during content extraction.
-    -   **`express`:** Used in `src/agent.js` to set up the backend API server for the Memory Visualization UI.
-    -   **`body-parser`:** Used with Express in `src/agent.js` for parsing JSON request bodies.
-    -   **`@modelcontextprotocol/sdk`:** Used in `src/mcpClient.js` for interacting with MCP servers.
-    -   **For `src/memory-ui/` (React App):**
-        -   `react`, `react-dom`
-        -   `axios` (for API calls to the backend)
-        -   Likely other standard React development dependencies (e.g., `react-scripts` if Create React App was used).
-    -   **For `src/advanced-chat-ui/` (Next.js Chat App):**
-        -   `next`: Framework.
-        -   `react`, `react-dom`: UI library.
-        -   `ai`: Vercel AI SDK core utilities.
-        -   `@ai-sdk/react`: Vercel AI SDK React hooks (e.g., `useChat`).
-        -   `@ai-sdk/openai`: Vercel AI SDK provider for OpenAI/DeepSeek compatible APIs.
-        -   `tailwindcss`: CSS framework.
-        -   `glob`: Used by the local copy of `github.js` within this app.
+## 3. Key Internal Utilities
+-   **`src/logger.js`:** Shared structured JSON logging utility used by `src/agent.js` and `src/mcpClient.js`. Provides `createLogger` for module-specific logger instances.
 
-## 4. External Services and APIs
--   **DeepSeek API (`https://api.deepseek.com/v1/chat/completions`):**
-    -   One of the primary LLMs for content analysis and blueprint generation.
-    -   Requires `DEEPSEEK_API_KEY` (from `.env` or `config.json`).
--   **OpenAI API:**
-    -   **Chat Completions (`https://api.openai.com/v1/chat/completions`):**
-        -   Alternative LLM provider for content analysis and blueprint generation.
-        -   Requires `OPENAI_API_KEY` (from `.env` or `config.json` via `apiKeys.openai` or `openaiApiKey`).
-        -   Provider selected based on model name prefix (e.g., "gpt-") in `config.json` settings like `llmModelRepo`.
-    -   **Embeddings (`https://api.openai.com/v1/embeddings`):**
-        -   Used by `vector-memory/embeddingProvider.js` to generate text embeddings (model `text-embedding-ada-002`).
-        -   Requires `OPENAI_API_KEY`.
--   **GitHub:**
-    -   Public and private repositories are cloned using the `git` CLI.
-    -   `GITHUB_PAT` environment variable or `config.json` entry can be used for private repository access.
--   **YouTube:**
-    -   Transcripts fetched via `youtube-transcript-plus`.
--   **Model Context Protocol (MCP) Server (Optional):**
-    -   `src/mcpClient.js` connects to an MCP server (default `http://localhost:5000/sse`) to invoke external tools.
+## 4. Key External Dependencies
+    -   **`@modelcontextprotocol/sdk` (v1.11.4):** Key dependency for `src/mcpClient.js` and `src/advanced-chat-ui/src/lib/mcp_ui_client.mjs`. Provides `Client`, `SSEClientTransport`, `StdioClientTransport`, and server components like `McpServer`.
+        -   **Observed Issues with v1.11.4 in Node.js v18.20.5 ESM environment:** See Section 8: Technical Constraints & Considerations.
+    -   **`node-fetch`:** Used for HTTP requests to LLM APIs.
+    -   **`youtube-transcript-plus`:** Used for fetching YouTube transcripts.
+    -   **`@lancedb/lancedb` & `apache-arrow`:** Used for LanceDB vector database interaction.
+    -   **`glob`:** Used for file pattern matching.
+    -   **`express` & `body-parser`:** Used in `src/agent.js` for the Memory Visualization UI backend.
+    -   **For `src/memory-ui/` (React App):** Standard React dependencies.
+    -   **For `src/advanced-chat-ui/` (Next.js Chat App):** `next`, `react`, `ai` (Vercel AI SDK), `@ai-sdk/react`, `@ai-sdk/openai`, `tailwindcss`, `zod`.
 
-## 5. Data Storage
--   **Configuration:** `config.json` for general settings.
--   **Simple Key-Value Memory:** `memory-store.json` (managed by `src/memory.js`).
--   **Hierarchical Memory:** `memory-hierarchy/` directory containing `session-memory.json`, `project-memory.json`, `global-memory.json` (managed by `src/hierarchicalMemory.js`).
--   **Developer Profiles:** `developer-profiles/` directory containing `{developerId}.json` files (managed by `src/developerProfile.js`).
--   **Semantic Vector Memory (LanceDB):** `vector-memory/lancedb-data/` directory (managed by `src/lancedb.js` and `vector-memory/lanceVectorMemory.js`).
--   **Output:** `output/` directory for generated Markdown blueprints.
--   **Temporary Clones:** `temp-clones/` directory for temporarily cloned GitHub repositories.
+## 5. External Services and APIs
+-   DeepSeek API, OpenAI API (Chat & Embeddings), GitHub, YouTube.
+-   Model Context Protocol (MCP) Servers (interaction via `src/mcpClient.js`).
 
-## 6. Development Setup and Tooling
--   **Version Control:** Git.
--   **`.nvmrc`:** Specifies Node.js version.
-    -   **`.npmrc`:** Potential npm configurations (project root `.npmrc` was modified to fix cache issues).
-    -   **`package.json` / `package-lock.json`:** Project metadata and dependency management (main project and also for `src/advanced-chat-ui` and `src/memory-ui`).
-    -   **CLI Execution:** Main agent run via `node src/agent.js`.
-    -   **Memory UI Development (`src/memory-ui/`):** Standard React application setup.
-    -   **Advanced Chat UI Development (`src/advanced-chat-ui/`):**
-        -   Next.js application using App Router, TypeScript, Tailwind CSS.
-        -   Has its own `package.json`, `tsconfig.json`, `next.config.ts`.
-        -   Run via `npm run dev` from within `src/advanced-chat-ui/`.
-        -   Requires its own `.env.local` file for API keys like `DEEPSEEK_API_KEY`.
+## 6. Data Storage
+-   `config.json`: Main configuration, including `mcp_servers` section.
+-   (Other storage as previously listed: `memory-store.json`, `memory-hierarchy/`, `developer-profiles/`, `vector-memory/lancedb-data/`, `output/`, `temp-clones/`).
 
-## 7. Technical Constraints & Considerations
--   **`git` CLI Dependency:** Essential for GitHub repository analysis. Must be in PATH.
--   **API Key Management:**
-    -   Main Agent: Critical for DeepSeek, OpenAI, GitHub PAT. Managed via `.env` at project root and `config.json`.
-    -   Advanced Chat UI: Requires its own `.env.local` in `src/advanced-chat-ui/` for `DEEPSEEK_API_KEY` (and potentially others).
--   **Network Connectivity:** Required for API calls, `git clone`, and YouTube transcript fetching.
--   **File System Permissions:** Agent needs permissions for creating/writing/deleting in its operational directories (`output/`, `temp-clones/`, `memory-hierarchy/`, `developer-profiles/`, `vector-memory/lancedb-data/`).
--   **Content & Token Limits:** Configurable limits (`maxTotalContentSize`, `maxSourceFilesToScan`, `maxSourceFileSize`, LLM `maxTokens`) are crucial for performance, cost management, and API constraints.
--   **Error Handling:** Implemented across modules for external processes, API calls, and file operations.
--   **Cross-Platform Compatibility:** Node.js is cross-platform, but `git` CLI availability is a system dependency.
--   **Alternative Implementations:** Presence of `vector-memory/vectorMemory.js` (ChromaDB client) suggests flexibility or evolution in vector store choice.
--   **Shared Code with Nested Next.js App:** Importing modules from the parent project (`ai-agent/src/`) into the nested Next.js app (`src/advanced-chat-ui/`) proved problematic. Current workaround involves copying `github.js` into `src/advanced-chat-ui/src/lib/`. Long-term, a monorepo setup or local package structure would be more maintainable.
+## 7. Development Setup and Tooling
+-   (As previously listed, with Node.js v18.20.5 confirmed).
 
-## 8. Code Style and Structure
--   **ES Modules:** Consistent use of `import`/`export`.
--   **Modularity:** Code is well-organized into feature-specific modules.
--   **Asynchronous Programming:** `async/await` is used extensively.
--   **Configuration Files:** `config.json` plays a central role in customizing agent behavior.
+## 8. Technical Constraints & Considerations
+-   **`@modelcontextprotocol/sdk@1.11.4` Stability and Compatibility (Node.js v18.20.5 ESM):**
+    -   **`StdioClientTransport`:**
+        -   Connection establishment is unreliable; `client.connect()` may time out.
+        -   The `Client` object's internal state (`client.state`) often remains `undefined` even if some underlying communication is successful (e.g., a tool call to a mock server using SDK's `McpServer` can succeed).
+        -   This inconsistent state can lead to errors like `client.disconnect is not a function` if `disconnect` is called when the state isn't as expected by the SDK.
+        -   Server-side errors thrown by tools are not consistently propagated as client-side exceptions by `client.callTool()`. The call may resolve successfully, with the error details potentially in the result payload.
+    -   **`SSEClientTransport`:**
+        -   Connections frequently fail with a generic `"SSE error: undefined"`. This might be an issue with the SDK's SSE transport layer or its dependency on the `eventsource` package in the current environment.
+    -   **ESM Imports:**
+        -   **Client-side:** Deep imports like `@modelcontextprotocol/sdk/client/index.js` (for `Client`), `...@sdk/client/stdio.js` (for `StdioClientTransport`), and `...@sdk/client/sse.js` (for `SSEClientTransport`) appear to be the correct paths based on the SDK's `package.json#exports` and are used.
+        -   **Server-side:** The correct import for `McpServer` is `@modelcontextprotocol/sdk/server/mcp.js` (not `...@sdk/server/index.js`).
+        -   General ESM compatibility issues have been reported by other users for this SDK (e.g., GitHub issues #427, #460), suggesting its ESM support might have rough edges, especially with bundlers or specific Node.js module resolution behaviors.
+    -   **Current Recommendation:** Due to these issues, Stdio and SSE transports via this SDK version are considered unreliable. Prioritize thorough testing and consider workarounds or alternative approaches if MCP functionality is critical and these issues persist. The `src/mcpClient.js` has been designed to be robust around these failures (e.g., timeouts, retries for initial connection).
+-   (Other constraints as previously listed: `git` CLI, API keys, network, permissions, content limits, error handling, cross-platform, shared code, Vercel AI SDK types).
+
+## 9. Code Style and Structure
+-   (As previously listed).
+-   **Logging:** Standardized on a shared structured JSON logger (`src/logger.js`) for `src/agent.js` and `src/mcpClient.js`.

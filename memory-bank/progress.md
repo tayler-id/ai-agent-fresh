@@ -1,125 +1,96 @@
-# Progress and Next Features (Updated May 16, 2025)
+# Progress and Next Features (Updated May 18, 2025)
 
 ## Current Project Status
-- **Git Repository Reset (May 15, 2025):** Due to critical issues (failed rebase, conflicts, secret handling problems) in the original `ai-agent` repository, a fresh repository named `ai-agent-fresh` was created at `/Users/tramsay/Desktop/ai-agent-fresh`. All project files were copied to this new repository, and an initial commit was made. The old repository is now deprecated. Development continues in `ai-agent-fresh`.
+- **MCP Client Refactoring (req-43) - Completed (May 18, 2025):**
+    - `src/mcpClient.js` was significantly refactored and enhanced by adopting a user-provided version and further integrating a shared logger. It now includes improved error handling, timeout management, initial connection retry logic, support for SSE/Stdio, and functions for configuration validation and connection testing.
+    - Circular dependency between `agent.js` and `mcpClient.js` was resolved.
+    - `src/logger.js` created for shared structured JSON logging.
+    - `src/mcpClient.README.md` created with comprehensive documentation.
+    - `test_mcp_client_refactored.mjs` developed for testing.
+    - **Persistent SDK Issues Noted:** `@modelcontextprotocol/sdk@1.11.4` continues to show instability with `StdioClientTransport` (client state issues, server error propagation) and `SSEClientTransport` (`SSE error: undefined`) in the Node.js v18 ESM environment.
+- **Advanced Chat UI - Module Resolution Success (May 18, 2025):** Resolved "Module not found: Can't resolve '@modelcontextprotocol/sdk'" in `src/advanced-chat-ui/`. The application now starts successfully.
+- **Git Repository Reset (May 15, 2025):** Project moved to `ai-agent-fresh` repository.
 - **Codebase Audit Completed (May 13, 2025):** Core Memory Bank documents updated.
-- **Advanced Chat UI Initiated (May 13, 2025):** Foundational setup for a new Next.js based chat UI (`src/advanced-chat-ui/`) is complete.
-- **LanceDB Integration with Next.js (Webpack & Turbopack) Successful (May 14, 2025):**
-    - LanceDB (`task-95`) successfully integrated into the `advanced-chat-ui` using `serverExternalPackages` in `next.config.ts`.
-    - Confirmed working with Webpack (after `webpack.externals` adjustments).
-    - Confirmed working with Turbopack (the `serverExternalPackages` setting was sufficient, previous resolution error did not recur).
-- **Memory-Enhanced Tool Chaining (req-34) - Core Mechanism Implemented & Verified (May 16, 2025):**
-    - Core logic for LLM to request internal memory lookups (`query_memory` tool) during analysis is implemented in `src/agent.js` and `src/llm.js`.
-    - Includes orchestration for semantic and hierarchical memory queries and feeding results back to LLM for refinement.
-    - Mechanism verified using simulated LLM tool calls. LLM did not spontaneously use the tool in initial naturalistic tests.
-- **Next Action (Updated May 16, 2025):** Complete `req-34` (Memory-Enhanced Tool Chaining) by committing and pushing changes. Then, resume high-priority tasks like Advanced Chat UI LanceDB integration.
+- **Advanced Chat UI Initiated (May 13, 2025):** Foundational setup for Next.js UI complete.
+- **LanceDB Integration with Next.js (Webpack & Turbopack) Successful (May 14, 2025):** LanceDB functional in `advanced-chat-ui`.
+- **Memory-Enhanced Tool Chaining (req-34) - Core Mechanism Implemented & Verified (May 16, 2025):** Logic for LLM to query internal memory (`query_memory` tool) is in place.
+- **Task Manager MCP Language Issue (May 16, 2025):** Task Manager MCP noted to respond in incorrect language; SSE connection also unreliable.
 
 ---
 
 ## Actually Completed & Implemented Features (Based on Code Audit & Recent Work)
 
 -   **Core Agent Logic (`src/agent.js`):**
-    -   CLI for YouTube, GitHub (public/private with PAT), and local project URL/path input.
+    -   CLI for YouTube, GitHub, local project input.
     -   Orchestration of analysis workflows.
-    -   Configuration loading (`config.json`, environment variables).
-    -   Basic Express.js backend for Memory UI (currently with mock in-memory data for API).
-    -   Orchestration logic for "Memory-Enhanced Tool Chaining" (`handleLlmResponseAndMemoryQueries`).
-    -   Implementation of `processInternalMemoryQuery` for semantic and hierarchical memory lookups.
--   **Content Sourcing:**
-    -   YouTube transcript fetching (`src/youtube.js` via `youtube-transcript-plus`). (Note: The role of `config/youtube_transcript_server.py` is secondary or under review).
-    -   GitHub repository cloning and content extraction (`src/github.js` via `git` CLI, `glob`, `.agentinclude` support).
-    -   Local project content extraction (similar logic in `src/agent.js` and `src/github.js`).
--   **LLM Interaction (`src/llm.js`):**
-    -   Interaction with DeepSeek API.
-    -   Generation of detailed JSON "Improvement and Re-implementation Blueprints."
-    -   Support for follow-up questions/refinements.
-    -   Updated prompts to instruct LLM on `query_memory` tool usage.
--   **Prompt Formatting (`src/promptGenerator.js`):**
-    -   Conversion of LLM JSON blueprints to Markdown files and console prompts.
--   **Memory Systems:**
-    -   **Simple Key-Value Memory (`src/memory.js`):** File-based (`memory-store.json`).
-    -   **Hierarchical Memory (`src/hierarchicalMemory.js`):** File-based for session, project, global layers (`memory-hierarchy/`). Interface verified as suitable for `query_memory`.
-    -   **Semantic Vector Memory (LanceDB - Primary):**
-        -   OpenAI embedding generation (`vector-memory/embeddingProvider.js`).
-        -   LanceDB interface (`src/lancedb.js`) for table creation, data insertion, and vector search.
-        -   Higher-level `LanceVectorMemory` class (`vector-memory/lanceVectorMemory.js`) integrating embedding and LanceDB operations. Interface verified as suitable for `query_memory`.
-    -   *(Alternative ChromaDB vector memory implementation exists in `vector-memory/vectorMemory.js`; LanceDB is the current primary focus for active development and semantic search integration).*
--   **Personalization & Context:**
-    -   Developer profile management (`src/developerProfile.js`) storing patterns/preferences in `developer-profiles/`.
-    -   Dynamic context window construction for LLMs (`src/contextWindowManager.js`).
--   **Memory Visualization UI (Partial - `src/memory-ui/`):**
-    -   React frontend (`App.js`) for browsing, searching, editing memory/profiles.
-    -   Backend API in `agent.js` is currently a MOCK and does NOT connect to persistent memory stores.
--   **MCP Client (`src/mcpClient.js`):**
-    -   Client for invoking tools on an external MCP server.
+    -   Configuration loading.
+    -   Express backend for Memory UI (mock data).
+    -   "Memory-Enhanced Tool Chaining" logic.
+    -   Internal memory query processing.
+    -   **Agent-Managed MCP Server Lifecycle:** Manages startup/shutdown of designated stdio MCP servers.
+    -   **Shared Structured Logging:** Uses `src/logger.js`.
+-   **Content Sourcing (`src/youtube.js`, `src/github.js`):** As previously documented.
+-   **LLM Interaction (`src/llm.js`):** As previously documented.
+-   **Prompt Formatting (`src/promptGenerator.js`):** As previously documented.
+-   **Memory Systems (`src/memory.js`, `src/hierarchicalMemory.js`, `vector-memory/`):** As previously documented.
+-   **Personalization & Context (`src/developerProfile.js`, `src/contextWindowManager.js`):** As previously documented.
+-   **MCP Client (`src/mcpClient.js` - Enhanced):**
+    -   Supports SSE and Stdio transports.
+    -   Integrates with agent-managed stdio servers (via passed function).
+    -   Per-call connections for unmanaged servers.
+    -   Robust error handling, timeouts, initial connection retry logic.
+    -   `validateMcpConfigurations()` function for checking `config.json`.
+    -   `testMcpServerConnection()` function for testing server reachability.
+    -   Uses shared structured logging from `src/logger.js`.
+-   **MCP Client Documentation (`src/mcpClient.README.md`):** Comprehensive documentation created.
+-   **MCP Client Tests (`test_mcp_client_refactored.mjs`):** Test script developed, highlighting client logic and SDK issues.
+-   **Shared Logger (`src/logger.js`):** Centralized structured JSON logging utility.
 -   **Advanced Chat UI (Foundational Setup - `src/advanced-chat-ui/`):**
-    -   Next.js application created (`src/advanced-chat-ui/`) with TypeScript, Tailwind CSS, App Router.
-    -   Vercel AI SDK (`ai`, `@ai-sdk/react`, `@ai-sdk/openai`) installed and integrated.
-    -   Basic chat page (`src/app/chat/page.tsx`) using `useChat` hook.
-    -   Backend API route (`src/app/api/chat/route.ts`) connecting to DeepSeek LLM (via OpenAI provider compatibility) and streaming responses.
-    -   Initial URL detection (GitHub/YouTube) in API route, modifying system prompt for LLM acknowledgment.
-    -   Resolved module import issues for `github.js` by copying it to `src/advanced-chat-ui/src/lib/github.js` and installing `glob` as a local dependency.
-    -   NPM cache configuration issues diagnosed and resolved for the main project.
-    -   **LanceDB Integration & RAG (`task-95` related work - May 16, 2025):**
-        -   Successfully tested LanceDB with Webpack and Turbopack (May 14, 2025).
-        -   Core RAG mechanism (semantic search via LanceDB in `api/chat` route, results augmenting LLM context) implemented and manually tested (May 16, 2025).
-        -   Logging for LanceDB operations in `route.ts` refined for conciseness.
--   **Memory-Enhanced Tool Chaining (req-34) - Core Mechanism Verified:**
-    -   Implemented orchestration in `src/agent.js` (`handleLlmResponseAndMemoryQueries`) to detect and process `query_memory` tool calls from the LLM.
-    -   Implemented `processInternalMemoryQuery` in `src/agent.js` for semantic and hierarchical lookups.
-    -   Updated LLM prompts in `src/llm.js` to instruct on `query_memory` tool usage.
-    -   Mechanism verified via simulated LLM tool calls (May 16, 2025). LLM did not use the tool spontaneously in initial naturalistic tests.
+    -   Basic Next.js app with Vercel AI SDK, chat page, and API route for LLM interaction.
+    -   LanceDB integration for RAG (core mechanism functional).
+    -   MCP client (`mcp_ui_client.mjs`) implemented but blocked by SDK issues.
+    -   Module resolution for SDK fixed.
 
-## Next Features (Revised May 16, 2025)
+## Next Features (Revised May 18, 2025)
 
-1.  **Complete "Memory-Enhanced Tool Chaining" (req-34):**
-    *   Commit and push all related code changes (`src/agent.js`, `src/llm.js`) and Memory Bank documentation updates (`task-156`).
-2.  **Advanced Chat UI - LanceDB RAG & Enhancements (High Priority - Core RAG Implemented):**
-    *   **Status:** Core RAG functionality (semantic search via LanceDB in `api/chat` route, results augmenting LLM context) is implemented and tested. Logging has been refined.
-    *   **Next Steps for this feature:** Document changes (`task-161`), commit and push (`task-162`).
-    *   Monitor for any side effects from the Turbopack warning regarding Webpack configuration. If issues arise, consult Turbopack documentation for specific configurations (`https://nextjs.org/docs/app/api-reference/next-config-js/turbo`).
-    *   Future enhancements could include more sophisticated context chunking, UI display of RAG sources, and dynamic `developerId` handling in the UI for personalized memory access.
-3.  **Research AI Agent Architectures & Native Dependency Solutions (Moderate Priority):**
-    *   While the immediate blocker for LanceDB is resolved, this research (`task-98`, `task-99`, `task-100` of `req-23`) remains valuable for long-term best practices, handling other potential native dependencies, and understanding Turbopack-specific configurations beyond `serverExternalPackages`.
-4.  **Advanced Chat UI - Other Foundational Enhancements (Post-RAG Commit):**
-    *   Further integration of GitHub/YouTube analysis and other core agent features into the chat UI.
+1.  **Resolve SDK Issues for MCP Functionality (CLI & UI - High Priority but Blocked):**
+    *   Further investigate or await fixes for `@modelcontextprotocol/sdk@1.11.4` issues:
+        *   `StdioClientTransport` instability (client state, error propagation).
+        *   `SSEClientTransport` "SSE error: undefined".
+        *   General ESM compatibility, especially for the Advanced Chat UI.
+    *   This is critical for reliable MCP tool usage.
+2.  **Advanced Chat UI - MCP Integration (Post-SDK Fixes):**
+    *   Fully test and debug `mcp_ui_client.mjs` and its integration into `api/chat/route.ts` once SDK issues are resolved.
+    *   Address TypeScript errors in `route.ts` related to Vercel AI SDK types.
+3.  **Advanced Chat UI - Further Enhancements:**
+    *   More sophisticated RAG features (context chunking, UI display of sources).
+    *   Dynamic `developerId` handling for personalized memory.
+    *   Integration of full analysis capabilities (blueprinting) for URLs.
+4.  **Memory Visualization UI - Backend Integration (`src/memory-ui/`):**
+    *   Connect the UI's backend API to persistent memory stores.
 5.  **Shared Code Management Strategy:**
-    *   Evaluate and implement a robust strategy for sharing code between the main agent and the `advanced-chat-ui`. This remains relevant and may be informed by the research into architectural patterns.
-6.  **Memory Visualization UI - Backend Integration (`src/memory-ui/`):**
-    *   Connect the UI's backend API to persistent memory stores. This task remains important.
-7.  **Local Path Analysis Bug (CLI Agent):**
-    *   This task is also secondary but should be addressed.
-8.  **Refine Core Agent Workflows, Error Handling, Prompt Engineering (Ongoing):**
-    *   Continuously improve prompts (including for `query_memory` if more proactive use is desired).
-    *   Enhance error handling and overall agent robustness.
-9.  **Knowledge Graph Updates (Ongoing):**
-    *   To reflect architectural changes and new feature implementations.
+    *   Implement a robust strategy for sharing code between the main agent and `advanced-chat-ui`.
+6.  **Refine Core Agent Workflows, Error Handling, Prompt Engineering (Ongoing).**
+7.  **Knowledge Graph Updates (Ongoing).**
 
 ---
 
 ## What Is Still Left / Not Yet Fully Implemented or Verified
 
-This list reflects features that are either not started, partially implemented without full integration, or need significant refinement.
-
--   **Advanced Chat UI - Full Feature Set:**
-    *   **Semantic Search/Vector DB Integration (`task-95` related):** Core RAG (semantic search augmenting LLM context in `api/chat`) is implemented.
-        *   *Still Left:* More advanced RAG features (e.g., sophisticated context chunking strategies, UI display/sourcing of retrieved context, dynamic `developerId` handling for personalized memory access in UI), full analysis (cloning, blueprinting) for URLs, LangChain.js integration.
-    *   Dynamic UI elements and sophisticated animations.
-    *   Display of complex analysis results (blueprints).
--   **Memory Visualization UI (`src/memory-ui/`) - Full Functionality:** The UI backend is currently mocked. Full CRUD operations against persistent memory are NOT implemented for the UI.
--   **Shared Code Management:** Current solution for `github.js` (copying) is a workaround. A robust monorepo strategy (e.g., local packages, npm/yarn workspaces) for sharing code between `ai-agent/src` and `src/advanced-chat-ui` is needed for better maintainability.
--   **Advanced Agent Autonomy & Task Chaining (CLI & UI):** Beyond the new `query_memory` mechanism, no broader system for breaking down high-level goals or autonomous task execution beyond initial LLM blueprinting.
--   **Sophisticated Prompt Engineering (Beyond Initial Chat UI Setup & `query_memory`):** Current prompt generation for CLI is template-based; advanced dynamic adaptation using full context (semantic search, hierarchical memory, profiles) is a next step for both CLI and the new UI.
--   **Robust MCP Tool Usage (CLI & UI):** MCP client exists, but its practical application (e.g., for YouTube transcripts) is not fully integrated or prioritized for either interface. The role of `config/youtube_transcript_server.py` needs clarification or deprecation if `youtube-transcript-plus` is the sole method.
--   **Comprehensive Testing Framework:** No automated testing, validation, or evaluation framework for agent outputs or module integrations.
--   **Cloud/Server Deployment & Multi-User Support:** Agent is CLI-focused; no infrastructure for cloud deployment or multi-user scenarios.
--   **Security/Access Control:** No specific authentication/authorization beyond GitHub PATs for private repos.
--   **In-depth Documentation/Help System:** While Memory Bank exists, no in-agent help or comprehensive user guides.
--   **Extensive External API Integrations (beyond core):** Limited to DeepSeek, OpenAI, YouTube (via library), and GitHub (via CLI).
--   **Performance Optimization for Scale:** Current implementations are functional but not necessarily optimized for very large datasets or high-throughput scenarios.
--   **Alternative ChromaDB Vector Memory:** Its status is secondary to LanceDB; likely to be deprecated or kept for historical reference only.
+-   **Reliable MCP Tool Usage (CLI & UI):** Critically dependent on resolving `@modelcontextprotocol/sdk` issues. Stdio and SSE transports are currently unreliable due to these SDK problems.
+-   **Advanced Chat UI - Full Feature Set:** (As previously documented, with MCP integration pending SDK fixes).
+-   **Memory Visualization UI (`src/memory-ui/`) - Full Functionality:** Backend remains mocked.
+-   **Shared Code Management:** (As previously documented).
+-   **Advanced Agent Autonomy & Task Chaining (CLI & UI):** (As previously documented).
+-   **Sophisticated Prompt Engineering:** (As previously documented).
+-   **Comprehensive Testing Framework:** `test_mcp_client_refactored.mjs` is a good start for the MCP client, but broader automated testing is needed.
+-   (Other items as previously documented: Cloud/Server Deployment, Security, In-depth Help, Extensive External APIs, Performance Optimization, ChromaDB status).
 
 ---
 
-**Summary (Updated May 16, 2025):**
-The AI Agent, in the `ai-agent-fresh` repository, has a solid foundation with diverse analysis capabilities and multiple memory systems. The "Memory-Enhanced Tool Chaining" feature's core mechanism for the CLI agent is implemented and verified. The Advanced Chat UI now has a functional core RAG (Retrieval Augmented Generation) capability using LanceDB semantic search integrated into its `api/chat` route, with refined logging. Immediate next steps involve documenting and committing these Chat UI RAG updates, then proceeding with other roadmap items. The Memory Bank documentation is being actively updated.
+**Summary (Updated May 18, 2025):**
+The AI Agent's MCP client (`src/mcpClient.js`) has been significantly refactored for robustness, incorporating features like improved error handling, timeouts, reconnection logic, validation, connection testing, and structured logging. A shared logger (`src/logger.js`) was created. Documentation (`src/mcpClient.README.md`) and test cases (`test_mcp_client_refactored.mjs`) for the MCP client are now in place. The agent's core (`src/agent.js`) was updated to integrate with the refactored client and use the shared logger.
+
+However, the functionality of the MCP client remains severely hampered by persistent issues with the `@modelcontextprotocol/sdk@1.11.4`, particularly affecting `StdioClientTransport` (client state inconsistencies, server error propagation issues) and `SSEClientTransport` (`SSE error: undefined`). These SDK issues prevent reliable MCP tool invocation. The Advanced Chat UI's MCP client is also blocked by these SDK problems.
+
+Next steps for MCP will heavily depend on addressing these underlying SDK issues. Other development areas like the Advanced Chat UI enhancements and Memory Visualization UI backend integration can proceed, but any MCP-dependent features will be at risk.

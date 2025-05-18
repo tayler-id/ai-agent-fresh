@@ -21,6 +21,7 @@ graph TD
         Config[config.json & Env Vars]
         DevProfile[src/developerProfile.js]
         ContextMgr[src/contextWindowManager.js]
+        Logger[src/logger.js: Shared Logging Utility]
     end
 
     subgraph ContentProcessingModules
@@ -66,6 +67,7 @@ graph TD
     Agent -- RoutesTo --> YouTubeMod;
     Agent -- RoutesTo --> GitHubMod;
     Agent -- Handles --> LocalPathMod;
+    Agent -- Uses --> Logger;
     
     YouTubeMod -- Transcript --> LLMMod;
     GitHubMod -- RepoContent --> LLMMod;
@@ -91,8 +93,13 @@ graph TD
 
     GitHubMod -- ClonesFrom --> GitHub;
     YouTubeMod -- FetchesFrom --> YouTube;
-    Agent -- OptionallyUses --> MCPClient[src/mcpClient.js];
+    Agent -- Uses --> MCPClient[src/mcpClient.js];
+    MCPClient -- Reads --> Config;
     MCPClient -- ConnectsTo --> MCP;
+    MCPClient -- Uses --> Logger;
+    Agent -- ManagesLifecycleOf --> StdioMCP[Stdio MCP Servers (Managed)];
+    StdioMCP -- CommunicatesVia --> MCPClient;
+
 
     ExpressAPI -- (CurrentlyMocked)Manages --> SimpleMem;
     ExpressAPI -- (CurrentlyMocked)Manages --> DevProfile;
@@ -106,87 +113,67 @@ graph TD
     LanceVecMem_ChatUI -- Uses --> EmbeddingMod_ChatUI;
     EmbeddingMod_ChatUI -- InteractsWith --> OpenAI_Embed;
 
+    NextJS_Chat_API -- Uses --> MCP_UI_Client[src/advanced-chat-ui/src/lib/mcp_ui_client.mjs];
+    MCP_UI_Client -- Reads --> MCP_UI_Config[src/advanced-chat-ui/mcp-config.json];
+    MCP_UI_Client -- ConnectsTo --> MCP;
 ```
 
 ## Key System Components and Patterns
 
 1.  **Main Agent Logic (`src/agent.js`):**
-    *   **Entry Point & Orchestrator:** Initializes the agent, loads configuration, and handles the main CLI interaction loop.
-    *   **URL/Path Dispatching:** Determines input type (YouTube, GitHub, local path) and routes to appropriate processing modules.
-    *   **Express Backend for UI:** Initializes an Express.js server to provide API endpoints (`/api/memory`, `/api/profiles`) for the React-based Memory Visualization UI. *Currently, these API endpoints in `agent.js` use a simple in-memory mock rather than the persistent memory systems.*
-    *   **Configuration Management:** Loads settings from `config.json` and environment variables.
-    *   **Module Integration:** Coordinates calls to `youtube.js`, `github.js`, `llm.js`, `promptGenerator.js`, various memory modules, `developerProfile.js`, and `contextWindowManager.js`.
+    *   Orchestrates CLI interactions, content processing, LLM analysis, and memory operations.
+    *   Manages lifecycle of designated Stdio MCP servers.
+    *   Integrates with `src/mcpClient.js` by passing its `getManagedMcpClient` function for managed server interactions.
+    *   Uses the shared structured logging utility (`src/logger.js`).
+    *   Includes an Express.js backend (currently mocked) for the Memory Visualization UI.
 
-2.  **Content Processing Modules:**
-    *   **YouTube (`src/youtube.js`):** Fetches video transcripts using `youtube-transcript-plus`. Includes commented-out code for potential MCP tool integration for transcript fetching.
-    *   **GitHub (`src/github.js`):** Parses GitHub URLs, clones repositories (supports `GITHUB_PAT`), extracts content intelligently (READMEs, package files, source code, `memory-bank/*.md`, `.agentinclude` files), and manages temporary clone directories. Uses `glob` for file pattern matching.
-    *   **Local Path Processing (in `src/agent.js`):** Handles local directory inputs, applying similar content extraction logic as `github.js`, including `.agentinclude` support.
+2.  **Shared Logging Utility (`src/logger.js`):**
+    *   Provides a centralized structured JSON logging facility.
+    *   Used by `src/agent.js` and `src/mcpClient.js` to standardize log output.
+    *   Supports different log levels (INFO, WARN, ERROR, DEBUG) and module-specific logger instances.
+    *   Debug logging can be enabled via environment variables (e.g., `DEBUG=true` or `[MODULE_NAME]_DEBUG=true`).
 
-3.  **LLM Interaction & Prompting:**
-    *   **LLM Module (`src/llm.js`):** Manages interactions with LLM APIs (DeepSeek and OpenAI).
-        -   Selects the provider (DeepSeek or OpenAI) based on the model name prefix (e.g., "gpt-") specified in the configuration for the current task (repo, YouTube, follow-up).
-        -   Constructs detailed prompts to request "Improvement and Re-implementation Blueprints" in JSON format.
-        -   Handles API responses and errors, including parsing JSON from potentially messy LLM output.
-        -   Supports follow-up questions, dispatching to the configured LLM provider.
-        -   Includes DNS lookup before fetch calls for debugging.
-    *   **Prompt Generation (`src/promptGenerator.js`):** Takes the structured JSON blueprint from `llm.js` (regardless of which LLM produced it) and formats it into detailed Markdown files and concise console prompts.
+3.  **Content Processing Modules (`src/youtube.js`, `src/github.js`):**
+    *   Handle fetching and extracting content from YouTube, GitHub, and local paths.
 
-4.  **Memory Systems:**
-    *   **Simple Key-Value Memory (`src/memory.js`):** Basic file-based storage (`memory-store.json`) for associating summaries with URLs/paths.
-    *   **Hierarchical Memory (`src/hierarchicalMemory.js`):** Manages session, project, and global memory layers stored in separate JSON files within `memory-hierarchy/`.
-    *   **Semantic Vector Memory (LanceDB):**
-        *   `vector-memory/embeddingProvider.js`: Generates text embeddings using the OpenAI API (`text-embedding-ada-002`).
-        *   `src/lancedb.js`: Low-level interface for LanceDB operations (connect, ensure table, insert, query). Defines a schema with a 1536-dimension vector.
-        *   `vector-memory/lanceVectorMemory.js`: Higher-level class abstracting LanceDB usage; handles embedding text via `EmbeddingProvider` and performing semantic searches.
-    *   **Alternative Vector Memory (ChromaDB - `vector-memory/vectorMemory.js`):** An apparent older or alternative implementation for vector memory using ChromaDB, also leveraging the same `EmbeddingProvider`.
+4.  **LLM Interaction & Prompting (`src/llm.js`, `src/promptGenerator.js`):**
+    *   Manage communication with LLM APIs (DeepSeek, OpenAI).
+    *   Format LLM responses into blueprints and console prompts.
 
-5.  **Personalization & Context Management:**
-    *   **Developer Profiles (`src/developerProfile.js`):** Stores and retrieves developer-specific coding patterns and preferences from JSON files in `developer-profiles/`.
-    *   **Context Window Manager (`src/contextWindowManager.js`):** Dynamically constructs the context for LLM prompts by prioritizing recent memory entries (from various systems) and developer profile information, compressing content as needed to fit token limits.
+5.  **Memory Systems (`src/memory.js`, `src/hierarchicalMemory.js`, `vector-memory/`):**
+    *   Provide various layers of memory: simple key-value, hierarchical file-based, and semantic vector search (LanceDB).
 
-6.  **Memory Visualization UI:**
-    *   **Backend API (in `src/agent.js`):** Express.js server providing `/api/memory` and `/api/profiles` endpoints. *Currently serves mocked in-memory data for the UI.*
-    *   **Frontend (`src/memory-ui/src/App.js`):** React application that consumes the backend API to allow users to browse, search, filter, edit, and delete memory entries and developer profiles.
+6.  **Personalization & Context Management (`src/developerProfile.js`, `src/contextWindowManager.js`):**
+    *   Manage developer profiles and construct context windows for LLM prompts.
 
-7.  **MCP Client (`src/mcpClient.js`):**
-    *   Uses `@modelcontextprotocol/sdk` to connect to an MCP server (hardcoded to `http://localhost:5000/sse`) and invoke external tools.
+7.  **MCP Client (`src/mcpClient.js` - Enhanced):**
+    *   Provides robust client functionality for MCP server interaction.
+    *   Supports SSE and Stdio transports, dynamic server configuration from `config.json`.
+    *   Handles managed Stdio servers (via `getManagedMcpClientFunc` from `agent.js`) and per-call connections for unmanaged/SSE servers.
+    *   Includes error handling, timeouts, initial connection retry logic.
+    *   Exports `invokeMcpTool`, `validateMcpConfigurations`, `testMcpServerConnection`.
+    *   Uses the shared structured logging utility (`src/logger.js`).
+    *   Documented in `src/mcpClient.README.md`.
 
-7.  **Advanced Chat UI (`src/advanced-chat-ui/`):**
-    *   **Frontend (Next.js/React):** Located in `src/advanced-chat-ui/src/app/`.
-        *   Uses Next.js App Router.
-        *   Chat interface (`chat/page.tsx`) built with React and the Vercel AI SDK (`@ai-sdk/react`, specifically the `useChat` hook).
-        *   Styled with Tailwind CSS.
-    *   **Backend (Next.js API Route):** Located at `src/advanced-chat-ui/src/app/api/chat/route.ts`.
-        *   Handles POST requests from the `useChat` hook.
-        *   Connects to LLMs (currently DeepSeek via `@ai-sdk/openai` provider) using API keys from its own `.env.local` (e.g., `DEEPSEEK_API_KEY`).
-        *   Uses `streamText` from the `ai` package to stream responses.
-        *   Includes basic URL detection (GitHub, YouTube) and can trigger analysis for these URLs.
-        *   **RAG Implementation (May 16, 2025):** Performs semantic search using its local `LanceVectorMemory` instance (`advanced-chat-ui/src/lib/lanceVectorMemory.js`) based on the user's message. The search results are used to augment the LLM's system prompt, enabling Retrieval Augmented Generation. Chat interactions are also saved back to its local LanceDB instance.
-        *   Uses local copies of `github.js`, `llm.js`, memory modules, etc., from `src/advanced-chat-ui/src/lib/`.
-    *   **Configuration:**
-        *   `next.config.ts`: Configured with `serverExternalPackages: ['@lancedb/lancedb']` to support LanceDB.
-        *   `tsconfig.json`: Includes path alias `@/*` for its own `src`.
-    *   **Current Functionality:** Chat with LLM, RAG using semantic search on past chat interactions, acknowledgment/analysis of detected GitHub/YouTube URLs.
+8.  **Agent-Managed MCP Server Lifecycle (in `src/agent.js`):**
+    *   `agent.js` handles startup, stderr monitoring, and shutdown of Stdio MCP servers configured with `manageProcess: true`.
 
-8.  **Memory-Informed Planning and `query_memory` Meta-Tool (CLI Agent):**
-    *   **Concept:** To enhance the LLM's planning and tool chaining capabilities, a mechanism is designed where the LLM can proactively query internal memory systems (semantic and hierarchical) before finalizing its plan or selecting tools.
-    *   **`query_memory` Meta-Tool:** The LLM uses a special `query_memory` instruction (with parameters like `query_type`, `query_string`) to request information from memory.
-    *   **Agent Orchestration:** The agent's core logic (`src/agent.js`) intercepts `query_memory` requests. It then calls the appropriate memory modules (`LanceVectorMemory`, `HierarchicalMemory`) to retrieve the data.
-    *   **Iterative Refinement:** The retrieved memory information is formatted as a "tool result" and fed back into the LLM's context. The LLM can then refine its plan or make further memory queries before deciding on external actions (e.g., `read_file`, `execute_command`). This creates an internal sub-loop for memory-informed decision-making within a single user turn.
-    *   **Goal:** To make the agent's planning more context-aware, efficient, and capable of avoiding past pitfalls or leveraging known project patterns.
+9.  **Advanced Chat UI (`src/advanced-chat-ui/`):**
+    *   Next.js application with a React frontend and API backend.
+    *   Integrates with LLMs and its own local copy of memory systems (including LanceDB for RAG).
+    *   Includes an MCP client (`mcp_ui_client.mjs`) for UI-initiated tool calls (currently blocked by SDK issues).
+
+10. **Memory-Informed Planning (`query_memory` meta-tool in `src/agent.js`):**
+    *   Allows the LLM to proactively query internal memory systems during its planning phase.
 
 ## Design Patterns & Principles
--   **Modular Design:** Functionality is well-separated into distinct ES modules.
--   **Asynchronous Operations:** Extensive use of `async/await` for non-blocking I/O.
--   **Layered Abstraction for Memory:** Multiple memory systems with different characteristics (simple key-value, hierarchical, semantic vector) provide flexibility. The `LanceVectorMemory` class abstracts LanceDB details.
--   **Configuration Driven:** Key parameters (API keys, model names, limits) are managed via `config.json` and environment variables.
--   **Strategy Pattern (Implicit):** Different strategies for content sourcing (YouTube, GitHub, local) and memory management.
--   **Facade (Implicit for Memory UI):** The Express API in `agent.js` acts as a facade for the UI, though it currently uses mock data.
--   **Temporary Resource Management:** `github.js` manages temporary cloned repositories.
+-   **Modular Design:** Core functionality separated into ES modules.
+-   **Shared Utilities:** Centralized logging (`src/logger.js`).
+-   **Dependency Injection (Implicit):** `getManagedMcpClientFunc` is passed to `invokeMcpTool` to break circular dependency and provide `agent.js`'s managed client access.
+-   **Asynchronous Operations:** Extensive use of `async/await`.
+-   **Configuration Driven:** Behavior customized via `config.json`.
+-   (Other patterns as previously listed: Layered Abstraction for Memory, Strategy, Facade, Temporary Resource Management).
 
 ## Scalability and Performance Considerations
--   **`git clone --depth 1`:** Minimizes clone time for GitHub repos.
--   **Content Size Limits:** Configurable limits in `github.js` and `contextWindowManager.js` manage LLM token usage and API costs.
--   **Asynchronous Operations:** Keep the CLI responsive.
--   **Semantic Search:** LanceDB provides efficient vector similarity search.
--   **Bottlenecks:** Likely to be `git clone`, LLM API response times, and potentially embedding generation for large amounts of text. The Memory UI's performance will depend on the efficiency of its (currently mock) backend API and the amount of data.
+-   (As previously listed).
+-   Structured logging can aid in performance monitoring if logs are ingested into an analysis platform.
