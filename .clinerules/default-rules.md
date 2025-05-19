@@ -13,7 +13,7 @@
 ### 3. Preferred MCP Tool Usage
 - **Task Manager Workflow:**
     -   MUST be used for every new multi-step task to plan and track progress (`github.com/pashpashpash/mcp-taskmanager`).
-    -   Strictly follow the `mark_task_done` -> `user_approval` -> `get_next_task` cycle for each task defined in the `request_planning` stage.
+    -   Strictly follow the `mark_task_done` -> `user_approval` -> `get_next_task` cycle for each task defined in the `request_planning` stage. This implies that after Cline marks a task done, the user must provide approval (e.g., by using the `approve_task_completion` tool or by responding affirmatively if Cline uses `ask_followup_question` to confirm task satisfaction) before Cline proceeds to `get_next_task`. Notes in `activeContext.md` suggesting deviations from this approval cycle should be considered temporary and require explicit user confirmation for the current session to override this default rule.
     -   For initial information gathering involving reading a known set of multiple files (e.g., reading all core Memory Bank files at the start of a task), consider if a single planned task in Task Manager like "Read all [XYZ] files" is appropriate, followed by separate tasks for analysis or processing of those files. This can reduce approval steps for sequential, non-destructive read operations.
     -   **Exception for Chained Sub-Operations:** If a single *planned task* from the Task Manager inherently involves a tight sequence of multiple, low-risk, internal sub-operations that *Cline* executes (e.g., a sequence of `git add` then `git commit` performed via `execute_command` as part of a larger "commit feature X" task), Cline MAY perform these chained sub-operations and then mark the single parent task as done, seeking approval once for that parent task. This is to avoid excessive approval steps for trivial, tightly coupled internal actions. Cline MUST still clearly state all sub-operations performed when marking the parent task done. This exception does NOT apply if any sub-operation involves writing/replacing files or has a higher risk.
     -   **Tasks Requiring Elevated Permissions:** If a planned task is likely to require elevated permissions (e.g., `sudo`), Cline SHOULD:
@@ -57,6 +57,14 @@
     2.  If possible, identify the remaining planned steps from the last known state of the MCP tool.
     3.  Propose to continue manually with the subsequent logical steps, seeking user confirmation for this adapted approach.
     4.  Document the MCP failure in `activeContext.md` as a significant event.
+    -   **Awareness of MCP Tool Capabilities:** Before attempting to use an MCP tool, Cline should be mindful of the specific tools listed as available for that MCP server in its initial context (system prompt). If a desired operation (e.g., `git push`) does not have a corresponding listed tool for a preferred MCP server (e.g., the Git MCP), Cline should directly consider alternatives like `execute_command` or other relevant MCPs (e.g., the GitHub MCP for repository interactions) without necessarily attempting the non-existent tool first, thereby improving efficiency.
+-   **Handling Unexpected MCP Tool Behavior (e.g., Incorrect Language Output):**
+    1.  If an MCP tool provides output in an unexpected format or language that hinders understanding but does not represent a complete failure:
+        a.  Document the specific behavior in `memory-bank/activeContext.md` and `memory-bank/progress.md`.
+        b.  Formulate a plan to monitor the behavior.
+        c.  If essential information can still be reliably extracted, continue using the tool with caution, potentially involving user verification for unclear parts.
+        d.  Develop a fallback strategy (e.g., manual process, alternative tool) if the MCP becomes unusable due to the behavior.
+        e.  Note that direct investigation into the MCP's internal issues (like language settings) is generally outside Cline's direct capability and may require user or MCP provider intervention.
 
 ### Interaction Protocols
 - **Strict Tool Adherence:** Even when outlining a multi-step plan or awaiting user input that isn't a direct answer to an `ask_followup_question`, if the turn involves providing information or requesting a distinct next action from the user, ensure a tool is used.
@@ -120,8 +128,9 @@ When a task requires user interaction with a UI or an external system that Cline
     *   The specific outputs/logs Cline needs from the user to verify the test (e.g., "server console logs for LVM search," "LLM's response in the UI").
 2.  **Iterative Test Execution:** Cline SHOULD request the user to perform one test case (or a small group of related test cases) at a time.
 3.  **Explicit Request for Results:** After the user performs the action, Cline MUST explicitly ask for all necessary outputs/logs for that specific test case using `ask_followup_question`.
-4.  **Confirmation of Understanding:** If the user's response is ambiguous or doesn't provide all requested information (e.g., "tell me," "you run it"), Cline MUST clarify what actions are needed from the user and what specific information is required, referencing the test plan. Avoid proceeding if the necessary test data is not yet provided.
-5.  **Analysis and Iteration:** Cline will analyze the provided results. If a test fails or shows unexpected behavior, Cline will diagnose and propose fixes before re-requesting a test.
+4.  **Comprehensive Data Capture for Complex Tests:** When extensive logs or conversation transcripts are expected from user-led testing, Cline SHOULD, if feasible for the user, suggest methods for capturing this data comprehensively (e.g., saving terminal output to a file, copying full conversation text). Cline should then be prepared to process this data if provided, potentially by asking the user to write it to a file that Cline can then read to facilitate easier review.
+5.  **Confirmation of Understanding:** If the user's response is ambiguous or doesn't provide all requested information (e.g., "tell me," "you run it"), Cline MUST clarify what actions are needed from the user and what specific information is required, referencing the test plan. Avoid proceeding if the necessary test data is not yet provided.
+6.  **Analysis and Iteration:** Cline will analyze the provided results. If a test fails or shows unexpected behavior, Cline will diagnose and propose fixes before re-requesting a test.
 
 ## Cline's Interaction
 -   Cline can execute the command to *start* the agent (e.g., `node src/agent.js`).
@@ -161,3 +170,43 @@ When a significant discrepancy is identified between the live codebase and the M
 3.  **Post-Audit:**
     *   The updated Memory Bank becomes the new source of truth.
     *   Offer reflection on the audit process itself for potential `.clinerules` refinement.
+
+---
+
+## Troubleshooting and Resilience Patterns
+
+### Dependency and Module System Issues
+
+#### ESM/CJS Interoperability and SDK Import Issues
+- When encountering `SyntaxError` for named exports between `.mjs` (importer) and `.js` (imported, using ESM syntax) files, especially if the project/package of the `.js` file might not be explicitly `"type": "module"`:
+    - **Action:** Attempt renaming the imported `.js` file to `.mjs`. Update all its import statements in other files accordingly. Delete the original `.js` file after confirming the rename and updates. This explicitly signals it as an ES Module.
+- If, after ensuring local project files are treated as ESM (e.g., by using `.mjs` extensions), an `ERR_PACKAGE_PATH_NOT_EXPORTED` error occurs when importing from an external SDK/library:
+    - **Documentation:** Clearly document this as an issue with the external package's `package.json` "exports" field, indicating it's not correctly configured for ESM consumption.
+    - **Assessment:** Note that this typically requires a fix or update in the external package itself. Complex workarounds like deep/direct file imports are risky and should be avoided unless explicitly guided and understood.
+    - **Task Management:** If the SDK is critical and this error makes it unusable, mark related tasks as BLOCKED. Clearly state the dependency on an SDK fix or a viable, safe workaround.
+    - **Execution:** Avoid repeated attempts to use the problematic import if the error is consistently `ERR_PACKAGE_PATH_NOT_EXPORTED`, as it's a fundamental package structure or build issue with the dependency.
+- If a "Module not found" error for an external SDK occurs at *runtime* within a Next.js/Turbopack environment (especially when an `.mjs` file imports the SDK), even after successful `npm install` and initial server startup (including cache clearing):
+    - **Investigation:** Suspect an SDK packaging or `exports` field issue related to ESM compatibility with the specific bundler/runtime context. The module might be locatable during the initial build phase but fail resolution when a specific route/API dynamically loads or bundles it.
+    - **Memory Bank Check:** Consult `techContext.md` or `activeContext.md` for known issues with the specific SDK and ESM/bundler compatibility.
+    - **Action:** Document the runtime nature of the error. If known SDK issues align, prioritize addressing those (e.g., checking for SDK updates, known workarounds for its `exports` field with the bundler). Consider this distinct from simple missing dependency errors.
+
+#### Persistent SDK Functional Bugs (e.g., @modelcontextprotocol/sdk StdioClientTransport)
+- When a specific version of an SDK consistently exhibits a functional bug (e.g., `@modelcontextprotocol/sdk@1.11.0` `StdioClientTransport` failing to initialize `Client` instances correctly in Node.js ESM environments, leading to undefined methods like `callTool`):
+    - **Initial Action:** After initial diagnosis and confirmation (e.g., across multiple test attempts or different but related tasks), clearly document this specific bug, the SDK version, and the environment in `memory-bank/techContext.md` and `memory-bank/activeContext.md`.
+    - **Version Check & Iteration (New):** If a critical SDK bug blocks core functionality across multiple attempted versions (e.g., different patch versions like v1.11.0 and v1.11.4), and if feasible:
+        -   Check the SDK's repository (e.g., GitHub issues, releases) for any mentions of the bug or recent fixes.
+        -   If a slightly newer or older patch/minor version is available and seems relevant, propose to the user testing this alternative version in a targeted way (e.g., in a minimal reproduction script or a specific sub-project like `advanced-chat-ui`) before broader changes. This should be a time-boxed effort.
+        -   Document the outcome of testing alternative versions.
+    - **Subsequent Tasks:** For tasks that would rely on this buggy feature of that specific SDK version, if no workaround is known or feasible:
+        - Assume the bug will persist for the versions tested.
+        - Clearly state this assumption when planning or reporting on such tasks (e.g., "Testing of Stdio transport is expected to fail due to known SDK bug X with versions Y and Z").
+        - Prioritize alternative transports or approaches if available and the buggy feature is critical.
+    - **Execution:** Avoid repeated, unchanged test executions of a feature known to be broken by such an underlying SDK bug for the tested versions, unless new information (e.g., a confirmed SDK update fixing the issue, a new viable workaround) becomes available.
+
+### Handling Persistent TypeScript/Linter Errors (Environment-Suspected)
+- When TypeScript or linter errors persist for code that appears to align with current library/SDK documentation (e.g., for types like Vercel AI SDK's `Message` or `ToolSet`):
+    - **Action:** Attempt reasonable fixes such as explicit typing of variables/objects and verifying import sources.
+    - **Assessment:** If errors remain and are suspected to be due to the local TypeScript environment (e.g., outdated package versions within a specific sub-project like `advanced-chat-ui`, incorrect `tsconfig.json` settings, or TS language server cache issues) rather than a fundamental code logic error against the library's intended API:
+        - **Documentation:** Document the specific errors and the lines of code affected in the task completion details and `memory-bank/activeContext.md`.
+        - **Reporting:** Note the suspicion that it's an environment/tooling issue.
+        - **Execution:** Proceed with completing the task if the core logical implementation is sound according to documentation, but clearly flag these TS/linting issues for user attention, as they might cause runtime problems or indicate a need for environment/dependency updates by the user.

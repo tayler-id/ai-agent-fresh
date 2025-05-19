@@ -65,7 +65,9 @@ To develop a sophisticated Node.js command-line AI agent capable of analyzing co
         -   Backend: Express.js server in `agent.js` providing API endpoints (currently mocked in-memory) for memory and profiles.
         -   Frontend: React application (`src/memory-ui/src/App.js`) to browse, search, filter, edit, and delete memory entries and profiles.
     -   **MCP Client (`src/mcpClient.js`):**
-        -   Integrate with Model Context Protocol servers to invoke external tools.
+        -   Integrate with Model Context Protocol (MCP) servers to invoke external tools.
+        -   Supports connections via HTTP Server-Sent Events (SSE) and direct stdio.
+        -   Includes agent-managed lifecycle for designated stdio MCP servers, configured via `config.json`.
 
 ## 4. Scope
 

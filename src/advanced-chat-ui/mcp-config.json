@@ -1,0 +1,29 @@
+{
+  "mcp_servers": {
+    "exa_search_ui": {
+      "displayName": "Exa Search (UI Client - Stdio)",
+      "description": "Exa Search MCP via Stdio for UI.",
+      "transport": "stdio",
+      "command": "node",
+      "args": ["/Users/tramsay/Documents/Cline/MCP/exa-mcp-server/build/index.js"],
+      "enabled": true,
+      "env": {
+        "EXA_API_KEY": "020c7c83-1758-43ac-98ed-1abecd44ae76"
+      }
+    },
+    "taskmanager_ui": {
+      "displayName": "Task Manager (UI Client - SSE)",
+      "description": "Task Manager MCP via SSE for UI.",
+      "transport": "sse",
+      "url": "http://localhost:5002/sse",
+      "enabled": true
+    },
+    "sse_echo_server_ui": {
+      "displayName": "Simple SSE Echo Server (UI Test)",
+      "description": "A simple SSE server that echoes back tool calls for testing.",
+      "transport": "sse",
+      "url": "http://localhost:5003/sse",
+      "enabled": true
+    }
+  }
+}

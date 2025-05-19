@@ -1,0 +1,33 @@
+{
+  "exa_search_ui": {
+    "displayName": "Exa Search (UI Client - Stdio)",
+    "description": "Exa Search MCP via Stdio for UI.",
+    "transport": "stdio",
+    "command": "node",
+    "args": ["./mock-mcp-server.js"],
+    "enabled": true,
+    "env": {
+      "EXA_API_KEY": "sample-api-key-for-testing"
+    }
+  },
+  "taskmanager_ui": {
+    "displayName": "Task Manager (UI Client - SSE)",
+    "description": "Task Manager MCP via SSE for UI.",
+    "transport": "sse",
+    "url": "http://localhost:5002/sse",
+    "enabled": true
+  },
+  "invalid_server": {
+    "displayName": "Invalid Server Configuration",
+    "description": "Server with missing transport type for testing validation.",
+    "enabled": true
+  },
+  "disabled_server": {
+    "displayName": "Disabled Server",
+    "description": "Server that is disabled for testing.",
+    "transport": "stdio",
+    "command": "node",
+    "args": ["./non-existent-script.js"],
+    "enabled": false
+  }
+}

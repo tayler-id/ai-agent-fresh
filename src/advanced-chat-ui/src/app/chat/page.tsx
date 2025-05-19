@@ -1,10 +1,16 @@
 'use client';
 
+import { useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 
 export default function ChatPage() {
   const { messages, input, handleInputChange, handleSubmit, error } = useChat();
   // By default, useChat will call '/api/chat'
+  const [developerId, setDeveloperId] = useState('');
+
+  const handleDeveloperIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDeveloperId(e.target.value);
+  };
 
   return (
     <div className="flex flex-col w-full max-w-2xl min-h-screen py-12 mx-auto stretch">
@@ -13,6 +19,22 @@ export default function ChatPage() {
           <span className="font-medium">Error:</span> {error.message}
         </div>
       )}
+
+      <div className="mb-4">
+        <label htmlFor="developerId" className="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
+          Developer ID:
+        </label>
+        <input
+          type="text"
+          id="developerId"
+          name="developerId"
+          className="w-full p-2.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-600 dark:text-white"
+          value={developerId}
+          onChange={handleDeveloperIdChange}
+          placeholder="Enter your Developer ID (e.g., tramsay)"
+        />
+      </div>
+
       <div className="flex-grow mb-4 overflow-auto">
         {messages.length > 0 ? (
           messages.map(m => (

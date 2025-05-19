@@ -10,7 +10,7 @@ import { parseGitHubUrl, cloneRepo, getRepoContentForAnalysis, cleanupRepo } fro
 import { analyzeTranscript, analyzeRepoContent, getFollowUpAnswer } from './llm.js';
 import { generatePrompts, generateRepoPrompts } from './promptGenerator.js';
 import { loadMemory, addMemoryEntry, getRelevantMemory } from './memory.js';
-import { invokeMcpTool } from './mcpClient.js';
+import { invokeMcpTool, validateMcpConfigurations } from './mcpClient.js'; // Added validateMcpConfigurations
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -28,6 +28,9 @@ import { createLogger } from './logger.js';
 
 const agentLogger = createLogger("Agent");
 const mcpManagerLogger = createLogger("AgentMCPManager");
+
+const MANAGED_SERVER_MAX_RESTART_ATTEMPTS = 3;
+const MANAGED_SERVER_RESTART_DELAY_MS = 5000; // 5 seconds
 
 const DEFAULT_CONFIG = {
   deepseekApiKey: "",
@@ -95,76 +98,219 @@ let configLoaded = false; // Flag to ensure config is loaded once
 async function ensureConfigLoaded() {
   if (!configLoaded) {
     await loadConfig(); // loadConfig sets the global config variable
+    
+    // Validate MCP server configurations after loading main config
+    const validationIssues = await validateMcpConfigurations();
+    if (validationIssues.length > 0) {
+      agentLogger.warn("MCP Server configuration validation issues found:", { issues: validationIssues });
+      // Optionally, decide if agent should halt or proceed with caution
+    } else {
+      agentLogger.info("MCP Server configurations validated successfully.");
+    }
     configLoaded = true; // Mark as loaded
   }
 }
 
 async function startManagedMcpServers() {
   await ensureConfigLoaded(); // Ensure config is loaded before proceeding
-  mcpManagerLogger.info("Starting managed MCP servers...");
+  mcpManagerLogger.info("Initializing managed MCP servers...");
   if (!config.mcp_servers || Object.keys(config.mcp_servers).length === 0) {
-    mcpManagerLogger.info("No mcp_servers configuration found or empty in config.json.");
+    mcpManagerLogger.info("No mcp_servers configuration found or empty in config.json. No managed servers to start.");
     return;
   }
 
   for (const serverIdentifier in config.mcp_servers) {
     const serverConfig = config.mcp_servers[serverIdentifier];
-    mcpManagerLogger.debug(`Checking server config: ${serverIdentifier}`, { serverIdentifier, config: serverConfig });
     if (serverConfig.transport === "stdio" && serverConfig.manageProcess === true && serverConfig.enabled !== false) {
-      mcpManagerLogger.info(`Attempting to start and manage stdio server: ${serverIdentifier} (${serverConfig.displayName || serverIdentifier})`, { serverIdentifier });
-      mcpManagerLogger.debug(`Config for ${serverIdentifier}:`, { serverIdentifier, configDetails: serverConfig });
-      if (!serverConfig.command) {
-        mcpManagerLogger.error(`Stdio server ${serverIdentifier} has manageProcess=true but no command provided.`, null, { serverIdentifier });
-        continue;
-      }
-
-      const stdioParams = {
-        command: serverConfig.command,
-        args: serverConfig.args || [],
-        cwd: serverConfig.cwd || process.cwd(),
-        env: { ...getLocalDefaultEnvironment(), ...(serverConfig.env || {}) },
-        stderr: serverConfig.stderrBehavior || "pipe", // Default to pipe for managed
-      };
-
-      try {
-        const transport = new StdioClientTransport(stdioParams);
-        const client = new Client({
-          name: `ai-agent-managed-${serverIdentifier.replace(/[^a-zA-Z0-9]/g, '_')}`, // Sanitize name
-          version: "1.0.0"
-        });
-
-        // The StdioClientTransport's underlying child process's stderr needs to be handled.
-        // The SDK's StdioClientTransport has a `get stderr()` method that returns a stream.
-        if (transport.stderr && stdioParams.stderr === "pipe") {
-            transport.stderr.on('data', (data) => {
-                // Using console.error directly for stderr stream to keep it distinct
-                console.error(`[MCP_STDERR:${serverIdentifier}] ${data.toString().trim()}`);
-            });
-        }
-        
-        // Handle transport errors for this specific managed client
-        transport.onerror = (error) => {
-            mcpManagerLogger.error(`Transport error for ${serverIdentifier}`, error, { serverIdentifier });
-            // Potentially attempt restart or mark as unhealthy
-            managedMcpClients.delete(serverIdentifier); // Remove on error
-        };
-        transport.onclose = () => {
-            mcpManagerLogger.info(`Transport closed for ${serverIdentifier}.`, { serverIdentifier });
-            managedMcpClients.delete(serverIdentifier); // Remove on close
-        };
-
-        await client.connect(transport); // This calls transport.start() which spawns the process
-        
-        managedMcpClients.set(serverIdentifier, { client, transport, config: serverConfig });
-        mcpManagerLogger.info(`Successfully started and connected to managed stdio server: ${serverIdentifier}`, { serverIdentifier, clientState: client.state });
-      } catch (error) {
-        mcpManagerLogger.error(`Failed to start or connect to managed stdio server ${serverIdentifier}`, error, { serverIdentifier });
-      }
+      // Initial attempt to start
+      _startAndManageSingleServer(serverIdentifier, serverConfig);
     }
   }
 }
 
-export function getManagedMcpClient(serverIdentifier) {
+async function _startAndManageSingleServer(serverIdentifier, serverConfig, attempt = 0) {
+  mcpManagerLogger.info(`Attempting to start/restart managed stdio server: ${serverIdentifier} (Attempt: ${attempt + 1})`, { serverIdentifier, attempt: attempt + 1 });
+  
+  if (!serverConfig.command) {
+    mcpManagerLogger.error(`Stdio server ${serverIdentifier} has manageProcess=true but no command provided. Cannot start.`, null, { serverIdentifier });
+    return;
+  }
+
+  const stdioParams = {
+    command: serverConfig.command,
+    args: serverConfig.args || [],
+    cwd: serverConfig.cwd || process.cwd(),
+    env: { ...getLocalDefaultEnvironment(), ...(serverConfig.env || {}) },
+    stderr: serverConfig.stderrBehavior || "pipe",
+  };
+
+  try {
+    const transport = new StdioClientTransport(stdioParams);
+    const client = new Client({
+      name: `ai-agent-managed-${serverIdentifier.replace(/[^a-zA-Z0-9]/g, '_')}`,
+      version: "1.0.0"
+    });
+
+    if (transport.stderr && stdioParams.stderr === "pipe") {
+      transport.stderr.on('data', (data) => {
+        console.error(`[MCP_STDERR:${serverIdentifier}] ${data.toString().trim()}`);
+      });
+    }
+    
+    const scheduleRestart = () => {
+      managedMcpClients.delete(serverIdentifier); // Ensure it's removed before attempting restart
+      // TODO: Add config option serverConfig.autoRestart (true by default?)
+      if (attempt < MANAGED_SERVER_MAX_RESTART_ATTEMPTS) {
+        mcpManagerLogger.info(`Scheduling restart for ${serverIdentifier} after ${MANAGED_SERVER_RESTART_DELAY_MS}ms. Attempt ${attempt + 1 + 1}.`, { serverIdentifier, nextAttempt: attempt + 2 });
+        setTimeout(() => _startAndManageSingleServer(serverIdentifier, serverConfig, attempt + 1), MANAGED_SERVER_RESTART_DELAY_MS * (attempt + 1)); // Basic exponential backoff
+      } else {
+        mcpManagerLogger.error(`Max restart attempts reached for ${serverIdentifier}. Server will remain offline.`, null, { serverIdentifier, maxAttempts: MANAGED_SERVER_MAX_RESTART_ATTEMPTS });
+      }
+    };
+
+    transport.onerror = (error) => {
+      mcpManagerLogger.error(`Transport error for managed server ${serverIdentifier}`, error, { serverIdentifier });
+      scheduleRestart();
+    };
+    transport.onclose = () => {
+      mcpManagerLogger.info(`Transport closed for managed server ${serverIdentifier}.`, { serverIdentifier });
+      scheduleRestart();
+    };
+
+    // TODO: SDK StdioClientTransport connect() is known to be problematic (client.state remains undefined).
+    // This restart logic might frequently trigger if connect() never resolves or SDK remains unstable.
+    await client.connect(transport); 
+    
+    managedMcpClients.set(serverIdentifier, { client, transport, config: serverConfig });
+    mcpManagerLogger.info(`Successfully initiated connection sequence for managed stdio server: ${serverIdentifier}. Client state after connect attempt: ${client.state}`, { serverIdentifier, clientState: client.state });
+
+    // Perform a test call specifically for markdownify_stdio_managed after attempting connection
+    if (serverIdentifier === 'markdownify_stdio_managed') {
+      mcpManagerLogger.info(`[MARKDOWNIFY_TEST] Attempting test call for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        // Assuming client.callTool can be attempted even if state isn't perfectly 'connected',
+        // as SDK behavior for stdio client.state has been inconsistent.
+        // The callTool method itself should handle timeouts or connection issues if not truly connected.
+        const testResult = await client.callTool({ name: 'webpage-to-markdown', arguments: { url: 'https://www.example.com' } });
+        mcpManagerLogger.info(`[MARKDOWNIFY_TEST] Test call to ${serverIdentifier} successful. Result snippet: ${JSON.stringify(testResult).substring(0, 200)}...`, { serverIdentifier });
+      } catch (testError) {
+        mcpManagerLogger.error(`[MARKDOWNIFY_TEST] Test call to ${serverIdentifier} FAILED.`, testError, { serverIdentifier });
+      }
+    } else if (serverIdentifier === 'git_stdio_managed') {
+      mcpManagerLogger.info(`[GIT_MCP_TEST] Attempting test call for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        const testResult = await client.callTool({ name: 'git_status', arguments: { repo_path: '/Users/tramsay/Desktop/ai-agent-fresh' } });
+        mcpManagerLogger.info(`[GIT_MCP_TEST] Test call to ${serverIdentifier} (git_status) successful. Result snippet: ${JSON.stringify(testResult).substring(0, 200)}...`, { serverIdentifier });
+      } catch (testError) {
+        mcpManagerLogger.error(`[GIT_MCP_TEST] Test call to ${serverIdentifier} (git_status) FAILED.`, testError, { serverIdentifier });
+      }
+    } else if (serverIdentifier === 'github_stdio_managed') {
+      mcpManagerLogger.info(`[GITHUB_MCP_TEST] Attempting test call for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        const testArgs = {
+          query: "topic:javascript language:javascript stars:>10000"
+        };
+        // Using search_repositories tool which might be less sensitive to auth for public data
+        const testResult = await client.callTool({ name: 'search_repositories', arguments: testArgs });
+        mcpManagerLogger.info(`[GITHUB_MCP_TEST] Test call to ${serverIdentifier} (search_repositories) successful. Result snippet: ${JSON.stringify(testResult).substring(0, 200)}...`, { serverIdentifier });
+      } catch (testError) {
+        mcpManagerLogger.error(`[GITHUB_MCP_TEST] Test call to ${serverIdentifier} (search_repositories) FAILED.`, testError, { serverIdentifier });
+      }
+    } else if (serverIdentifier === 'postgres_stdio_managed') {
+      mcpManagerLogger.info(`[POSTGRES_MCP_TEST] Attempting test call for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        const testArgs = {
+          sql: "SELECT NOW();"
+        };
+        const testResult = await client.callTool({ name: 'query', arguments: testArgs });
+        mcpManagerLogger.info(`[POSTGRES_MCP_TEST] Test call to ${serverIdentifier} (query SELECT NOW()) successful. Result snippet: ${JSON.stringify(testResult).substring(0, 200)}...`, { serverIdentifier });
+      } catch (testError) {
+        mcpManagerLogger.error(`[POSTGRES_MCP_TEST] Test call to ${serverIdentifier} (query SELECT NOW()) FAILED.`, testError, { serverIdentifier });
+      }
+    } else if (serverIdentifier === 'sqlite_stdio_managed') {
+      mcpManagerLogger.info(`[SQLITE_MCP_TEST] Attempting test call for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        const testResult = await client.callTool({ name: 'list_tables', arguments: {} });
+        mcpManagerLogger.info(`[SQLITE_MCP_TEST] Test call to ${serverIdentifier} (list_tables) successful. Result snippet: ${JSON.stringify(testResult).substring(0, 200)}...`, { serverIdentifier });
+      } catch (testError) {
+        mcpManagerLogger.error(`[SQLITE_MCP_TEST] Test call to ${serverIdentifier} (list_tables) FAILED.`, testError, { serverIdentifier });
+      }
+    } else if (serverIdentifier === 'sequentialthinking_stdio_managed') {
+      mcpManagerLogger.info(`[SEQTHINK_MCP_TEST] Attempting test call for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        const testArgs = {
+          thought: "This is the first thought in a sequence to test the server.",
+          nextThoughtNeeded: true,
+          thoughtNumber: 1,
+          totalThoughts: 3
+        };
+        const testResult = await client.callTool({ name: 'sequentialthinking', arguments: testArgs });
+        mcpManagerLogger.info(`[SEQTHINK_MCP_TEST] Test call to ${serverIdentifier} (sequentialthinking) successful. Result snippet: ${JSON.stringify(testResult).substring(0, 200)}...`, { serverIdentifier });
+      } catch (testError) {
+        mcpManagerLogger.error(`[SEQTHINK_MCP_TEST] Test call to ${serverIdentifier} (sequentialthinking) FAILED.`, testError, { serverIdentifier });
+      }
+    } else if (serverIdentifier === 'redis_stdio_managed') {
+      mcpManagerLogger.info(`[REDIS_MCP_TEST] Attempting test calls for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        const testKey = "cline_agent_test_key";
+        const testValue = `Hello from Cline Agent at ${new Date().toISOString()}`;
+        
+        mcpManagerLogger.info(`[REDIS_MCP_TEST] Attempting to SET key: ${testKey}`, { serverIdentifier });
+        const setResult = await client.callTool({ name: 'set', arguments: { key: testKey, value: testValue, expireSeconds: 60 } });
+        mcpManagerLogger.info(`[REDIS_MCP_TEST] SET call to ${serverIdentifier} successful. Result: ${JSON.stringify(setResult)}`, { serverIdentifier });
+
+        mcpManagerLogger.info(`[REDIS_MCP_TEST] Attempting to GET key: ${testKey}`, { serverIdentifier });
+        const getResult = await client.callTool({ name: 'get', arguments: { key: testKey } });
+        if (getResult && getResult.content && getResult.content[0] && getResult.content[0].text === testValue) {
+          mcpManagerLogger.info(`[REDIS_MCP_TEST] GET call to ${serverIdentifier} successful and value matches. Value: ${getResult.content[0].text}`, { serverIdentifier });
+        } else {
+          mcpManagerLogger.error(`[REDIS_MCP_TEST] GET call to ${serverIdentifier} FAILED or value mismatch. Expected: "${testValue}", Got: ${JSON.stringify(getResult)}`, null, { serverIdentifier });
+        }
+      } catch (testError) {
+        mcpManagerLogger.error(`[REDIS_MCP_TEST] Test calls to ${serverIdentifier} FAILED.`, testError, { serverIdentifier });
+      }
+    } else if (serverIdentifier === 'taskmanager_stdio_managed') {
+      mcpManagerLogger.info(`[TASKMAN_MCP_TEST] Attempting test call for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        const testResult = await client.callTool({ name: 'list_requests', arguments: {} });
+        mcpManagerLogger.info(`[TASKMAN_MCP_TEST] Test call to ${serverIdentifier} (list_requests) successful. Result snippet: ${JSON.stringify(testResult).substring(0, 200)}...`, { serverIdentifier });
+      } catch (testError) {
+        mcpManagerLogger.error(`[TASKMAN_MCP_TEST] Test call to ${serverIdentifier} (list_requests) FAILED.`, testError, { serverIdentifier });
+      }
+    } else if (serverIdentifier === 'exa_search_stdio_managed') {
+      mcpManagerLogger.info(`[EXA_MCP_TEST] Attempting test call for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        const testArgs = { query: "latest AI news", numResults: 1 };
+        const testResult = await client.callTool({ name: 'web_search_exa', arguments: testArgs });
+        mcpManagerLogger.info(`[EXA_MCP_TEST] Test call to ${serverIdentifier} (web_search_exa) successful. Result snippet: ${JSON.stringify(testResult).substring(0, 200)}...`, { serverIdentifier });
+      } catch (testError) {
+        mcpManagerLogger.error(`[EXA_MCP_TEST] Test call to ${serverIdentifier} (web_search_exa) FAILED.`, testError, { serverIdentifier });
+      }
+    } else if (serverIdentifier === 'context7_stdio_managed') {
+      mcpManagerLogger.info(`[CONTEXT7_MCP_TEST] Attempting test call for ${serverIdentifier}. Current client state: ${client.state}`, { serverIdentifier });
+      try {
+        const testArgs = { libraryName: "react" };
+        const testResult = await client.callTool({ name: 'resolve-library-id', arguments: testArgs });
+        mcpManagerLogger.info(`[CONTEXT7_MCP_TEST] Test call to ${serverIdentifier} (resolve-library-id) successful. Result snippet: ${JSON.stringify(testResult).substring(0, 200)}...`, { serverIdentifier });
+      } catch (testError) {
+        mcpManagerLogger.error(`[CONTEXT7_MCP_TEST] Test call to ${serverIdentifier} (resolve-library-id) FAILED.`, testError, { serverIdentifier });
+      }
+    }
+
+  } catch (error) {
+    mcpManagerLogger.error(`Failed to start or connect to managed stdio server ${serverIdentifier} on attempt ${attempt + 1}`, error, { serverIdentifier, attempt: attempt + 1 });
+    // Schedule restart on initial catch as well
+    managedMcpClients.delete(serverIdentifier); // Ensure it's removed
+     if (attempt < MANAGED_SERVER_MAX_RESTART_ATTEMPTS) {
+        mcpManagerLogger.info(`Scheduling restart for ${serverIdentifier} after ${MANAGED_SERVER_RESTART_DELAY_MS}ms due to startup/connect error. Attempt ${attempt + 1 + 1}.`, { serverIdentifier, nextAttempt: attempt + 2 });
+        setTimeout(() => _startAndManageSingleServer(serverIdentifier, serverConfig, attempt + 1), MANAGED_SERVER_RESTART_DELAY_MS * (attempt + 1));
+      } else {
+        mcpManagerLogger.error(`Max restart attempts reached for ${serverIdentifier} during startup/connect. Server will remain offline.`, null, { serverIdentifier, maxAttempts: MANAGED_SERVER_MAX_RESTART_ATTEMPTS });
+      }
+  }
+}
+
+function getManagedMcpClient(serverIdentifier) { // Removed export keyword here
   const entry = managedMcpClients.get(serverIdentifier);
   if (entry && entry.client.state === "connected") {
     return entry.client;
@@ -256,9 +402,9 @@ async function setupMemoryApi(app) {
 export { 
     setupMemoryApi, // Keep this export if Memory UI still uses it
     startManagedMcpServers,
-    stopManagedMcpServers
+    stopManagedMcpServers,
+    getManagedMcpClient // Added to block export
 };
-// getManagedMcpClient is already exported by its own line: export function getManagedMcpClient...
 
 async function processInternalMemoryQuery(queryType, queryString, developerId) {
   // ... (existing processInternalMemoryQuery code remains unchanged) ...

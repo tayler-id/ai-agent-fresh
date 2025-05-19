@@ -33,6 +33,7 @@ These guidelines are for Ramsay, an AI agent, to follow during the development o
 - **Feature Awareness (e.g., "What can you do?"):**
     - The goal is for the UI to accurately describe its own features. The previous attempt using `features.json` caused build issues.
     - When re-approaching this, prioritize stability. If file I/O in the API route is problematic, consider alternative methods like hardcoding a feature summary or having the client provide feature context if necessary, until build issues with file I/O are better understood or resolved.
+- **User-Identified Feature Gaps/Observations:** When the user identifies a missing feature, unexpected behavior, or makes a pertinent observation about the UI (e.g., UI not prompting for `developerId`), Cline MUST ensure this observation is captured in `memory-bank/activeContext.md` (e.g., under a relevant feature's status or as a new point for future consideration) and potentially in `memory-bank/progress.md` under 'What Is Still Left' if it represents a clear deviation from planned or desired functionality.
 
 ## Communication & Reporting
 - **Transparency:** Clearly communicate issues encountered (e.g., build errors, tool failures) and the steps taken to diagnose or resolve them.

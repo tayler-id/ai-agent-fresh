@@ -71,8 +71,10 @@ async function getMainConfig() { // Renamed function
     return cachedMainConfig;
   }
 
-  const primaryConfigPath = path.resolve(process.cwd(), 'config.json');
-  logger.info(`Attempting to load main configuration from ${primaryConfigPath}`);
+  // When running within Next.js API route, process.cwd() is src/advanced-chat-ui/
+  // The main config.json is in the project root, so we need to go up two levels.
+  const primaryConfigPath = path.resolve(process.cwd(), '../../config.json'); 
+  logger.info(`Attempting to load main configuration from ${primaryConfigPath} (cwd: ${process.cwd()})`);
   
   try {
     const configFile = await fs.readFile(primaryConfigPath, 'utf-8');

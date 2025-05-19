@@ -1,110 +1,81 @@
-# AI Agent
+# MCP Client README
 
-This project is an AI agent built in a Node.js environment, fully aligned with MCP server configuration and workspace standards.
+This repository provides:
 
-## Environment
+- **`mcpClient.js`**: Core MCP Client implementation with robust error handling.
+- **`agent.js`**: Agent bootstrap and managed MCP server lifecycle.
+- **`test-harness.js`**: Bulk testing of connections and tools.
+- **Next.js API**: `/api/invoke-mcp` for UI integration.
+- **React UI**: A component under `components/MCPToolRunner.tsx`.
 
-- Node.js version: 20.11.1 (see `.nvmrc`)
-- npm global prefix: `D:/Dev/npm-global`
-- npm cache: `D:/Dev/npm-cache`
-- All configuration files are local to this project to ensure compatibility with MCP servers and the broader dev environment.
+## Architecture Overview
 
-## Setup
+```mermaid
+flowchart LR
+  subgraph Backend
+    A[config.json] --> B[mcpClient.js]
+    B --> C[invokeMcpTool]
+    C -->|stdio| D[StdIO Transport]
+    C -->|SSE| E[SSE Transport]
+    C -->|WebSocket| F[WebSocket Transport]
+    C --> G[LLM Tool Call]
+  end
 
-1. Use `nvm use` to activate Node.js 20.11.1.
-2. All npm installs will use the global prefix and cache on D: as per `.npmrc`.
-3. Project directory: `d:/Dev/ai-agent`
+  subgraph API
+    H[/api/invoke-mcp] --> B
+  end
 
-## Features
+  subgraph Frontend
+    I[MCPToolRunner React] --> H
+    I --> J[User Input]
+    I --> K[Result / Error Display]
+  end
 
-- **Semantic Memory with LanceDB:** Stores, retrieves, and semantically searches memory entries using LanceDB as a local vector database and OpenAI embeddings for vectorization.
-- **Embedding Pipeline:** All memory entries, code snippets, and documentation are embedded using OpenAI's API and stored in LanceDB for fast semantic retrieval.
-- **Tested Integration:** Includes a test script that verifies the full semantic memory flow (embedding, storage, retrieval, and search) with human-readable output.
-- Robust YouTube transcript retrieval with a 3-step fallback:
-  1. Try MCP tool (`get_youtube_video_transcript`)
-  2. Fallback to `youtube-transcript-plus` Node.js package
-  3. Graceful error if no transcript is available
-- Transcript analysis using DeepSeek LLM API (OpenAI-compatible, cost-effective)
-- Prompts are generated based on the actual video content
-- Prompts are saved to a Markdown file (`prompts.md`) after each analysis
-- Interactive CLI: ask follow-up questions about the video/prompts, analyze new videos, or exit at any time
+  G --> J
+  G --> K
+```
 
-## Prerequisites
+## SDK Stdio Transport Fix & Workaround  
 
-- Node.js 20.11.1 (`nvm use` recommended)
-- `node-fetch` installed (already included in package.json)
-- `@lancedb/lancedb` and `apache-arrow` installed for LanceDB integration
-- `git` command-line tool installed and in your system's PATH (for GitHub repository analysis).
-- Internet access for fetching YouTube transcripts, cloning GitHub repositories, calling the LLM API, and generating embeddings.
-- **API Keys:**
-  - **OpenAI API Key:** Required for embedding pipeline and semantic memory.
-  - **DeepSeek API Key:** Required for LLM analysis.
-  - **GitHub Personal Access Token (PAT):** Optional, but needed for accessing private repositories or to avoid rate limits on public repositories.
-- These keys can be set as environment variables (`OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GITHUB_PAT`) or in the `config.json` file. Environment variables will override `config.json` values.
+### A. Explicit Transport Passing to connect()  
+Due to a bug in `@modelcontextprotocol/sdk@1.11.4`, the Client constructor’s `transport` option is not applied inside `client.connect()`. This leaves `this._transport` undefined and leads to errors like `Cannot set properties of undefined (setting 'onclose')`.  
 
-## Configuration
+**Solution:** Always pass the transport directly into `connect()`, rather than relying on the constructor.  
 
-The agent can be configured using a `config.json` file in the project root (`ai-agent/config.json`). If this file is not present, default settings and environment variables will be used. An example configuration file (`config.json.example`) is provided.
+```js
+// Before (fails silently):
+const client = new Client({ transport });
+await client.connect(); // transport not set internally
 
-**`config.json` Settings:**
+// After (correct):
+const client = new Client({ name: 'advanced-chat-ui', version: '1.0.0' });
+await client.connect(transport);
+```
 
--   `openaiApiKey` (string): Your OpenAI API key for embeddings. (Overrides `OPENAI_API_KEY` env var if env var is not set).
--   `deepseekApiKey` (string): Your DeepSeek API key. (Overrides `DEEPSEEK_API_KEY` env var if env var is not set).
--   `githubPat` (string): Your GitHub Personal Access Token. (Overrides `GITHUB_PAT` env var if env var is not set).
--   `llmModelYouTube` (string): The LLM model to use for YouTube transcript analysis (e.g., "deepseek-chat").
--   `llmModelRepo` (string): The LLM model for GitHub repository and local project analysis.
--   `llmModelFollowUp` (string): The LLM model for follow-up questions.
--   `maxTokensYouTube` (number): Max tokens for YouTube analysis LLM calls.
--   `maxTokensRepo` (number): Max tokens for repository/local project analysis LLM calls.
--   `maxTokensFollowUp` (number): Max tokens for follow-up LLM calls.
--   `temperatureYouTube` (number): Temperature setting for YouTube analysis (0.0 - 1.0).
--   `temperatureRepo` (number): Temperature for repository/local project analysis.
--   `temperatureFollowUp` (number): Temperature for follow-up questions.
--   `outputDir` (string): Directory where generated blueprint files are saved (e.g., "output").
--   `tempClonesBaseDir` (string): Base directory for temporarily cloning GitHub repositories (e.g., "temp-clones").
--   `maxTotalContentSize` (number): Maximum total size (in bytes) of concatenated file content to send to the LLM for repository/local analysis.
--   `maxSourceFilesToScan` (number): Maximum number of source files to consider for inclusion in repository/local analysis (after READMEs, memory bank, and package files).
--   `maxSourceFileSize` (number): Maximum size (in bytes) for an individual source file to be included.
+In your Next.js route (`src/app/api/chat/route.ts`), update accordingly:
 
-Environment variables `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, and `GITHUB_PAT` will always take precedence if set.
+```diff
+- const client = new Client({ transport });
+- await client.connect();
++ const client = new Client({ name: 'advanced-chat-ui', version: '1.0.0' });
++ await client.connect(transport);
+```
 
-## Usage
+### B. Prototype Polyfill for onerror/onclose
 
-1. In this directory, run:
+As a safety net (to guard against missing hooks on the transport), polyfill `onerror` and `onclose` on the prototype of `StdioClientTransport`. Place this at the top of `mcp_ui_client.mjs`, **before** any `client.connect()` call:
 
-   ```
-   node src/agent.js
-   ```
+```js
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
-2. When prompted, enter a YouTube video URL or GitHub repository URL.
+// Polyfill missing hooks so assignments don't crash
+const proto = StdioClientTransport.prototype;
+if (!Object.getOwnPropertyDescriptor(proto, 'onerror')) {
+  Object.defineProperty(proto, 'onerror', { value: null, writable: true });
+}
+if (!Object.getOwnPropertyDescriptor(proto, 'onclose')) {
+  Object.defineProperty(proto, 'onclose', { value: null, writable: true });
+}
+```
 
-3. The agent will:
-   - Fetch the transcript for the video using the fallback strategy
-   - Analyze the transcript with DeepSeek LLM
-   - Generate a set of prompts for a coding agent based on the video content
-   - Save the prompts to `prompts.md`
-   - Store, embed, and retrieve semantic memory using LanceDB and OpenAI embeddings
-   - Enter an interactive mode where you can ask follow-up questions or analyze new videos
-
-## Roadmap
-
-- **Next:** Memory Visualization and Editing UI (CLI or web-based)
-- Automated contextual prompt engineering
-- Agent autonomy and task chaining
-- Plugin/tooling ecosystem for external integrations
-- Cloud/server deployment, multi-user support, and advanced analytics
-- Support for additional LLM providers (Together, Groq, OpenAI, etc.)
-- Enhanced prompt engineering and output formatting
-- Optional: export full conversation history to Markdown
-
----
-
-**What’s Done:**  
-- Hierarchical memory, dynamic context, profile learning, and full semantic memory retrieval via LanceDB and OpenAI embeddings.
-- Test script for LanceDB integration and embedding pipeline.
-
-**What’s Needed / Next:**  
-- Memory Visualization and Editing UI
-- Automated prompt engineering
-- Agent autonomy and task chaining
-- Plugin ecosystem, cloud deployment, and advanced analytics
+With these two changes, the UI client should be able to establish a Stdio transport connection without hitting the `onclose`/`onerror` undefined errors. Once the SDK is patched, you can remove the polyfill section.
